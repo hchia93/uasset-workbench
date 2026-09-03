@@ -20,6 +20,7 @@ namespace
     {
         TArray<TUniquePtr<IBlueprintWriter>> Writers;
         Writers.Add(MakeBlueprintComponentWriter());
+        Writers.Add(MakeBlueprintWidgetWriter());
         Writers.Add(MakeBlueprintVariableWriter());
         Writers.Add(MakeBlueprintDefaultsWriter());
         Writers.Add(MakeBlueprintFunctionWriter());

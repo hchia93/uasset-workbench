@@ -6,7 +6,7 @@
 
 | RunName | 编辑对象 |
 | --- | --- |
-| `EditBlueprint` | Blueprint 的组件、变量、默认值、函数、分发器、接口、状态机、图、排版 |
+| `EditBlueprint` | Blueprint 的组件、控件、变量、默认值、函数、分发器、接口、状态机、图、排版 |
 | `EditAnimAsset` | AnimSequence / AnimMontage 的 notify 与曲线，Sequence 另有 sync marker，Montage 另有 section 与 slot |
 | `EditTextureAsset` | Texture2D 的构建设置 |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 |
@@ -20,6 +20,7 @@
 | Spec key | Writer | 对应 diff mode | 写什么 |
 | --- | --- | --- | --- |
 | `Components` | `FBlueprintComponentWriter` | `ComponentsMode` | SimpleConstructionScript 组件树 |
+| `Widgets` | `FBlueprintWidgetWriter` | `DesignerMode` | WidgetBlueprint 的控件树 |
 | `Variables` | `FBlueprintVariableWriter` | `MyBlueprintMode` | 成员变量 |
 | `Defaults` | `FBlueprintDefaultsWriter` | `DefaultsMode` | CDO 与组件模板的属性值 |
 | `Functions` | `FBlueprintFunctionWriter` | `MyBlueprintMode` | 函数图 |
@@ -32,10 +33,10 @@
 执行顺序固定，与 spec 里的 key 顺序无关：
 
 ```
-Components -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
+Components -> Widgets -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
 ```
 
-后一个依赖前一个的结果。`Graph` 能引用同一次运行里新建的组件和变量，也能点名 `Functions` 注册的函数入口与 result 节点，`Layout` 能用 `Graph` 给节点的 `Id` 寻址，这是九个 writer 合成一个 commandlet 的原因。
+后一个依赖前一个的结果。`Graph` 能引用同一次运行里新建的组件和变量，也能点名 `Functions` 注册的函数入口与 result 节点，`Layout` 能用 `Graph` 给节点的 `Id` 寻址，这是十个 writer 合成一个 commandlet 的原因。
 
 ### 调用
 
@@ -220,6 +221,43 @@ transition 的结果 pin 绑定不在这里，走 `Graph` 的 `Bind`，`Node` �
 绑定的函数必须是本 BP 里签名与 `Prototype_ThreadSafeAnimUpdateCall` 相容且标了 thread safe 的函数，否则编译报错。conduit 与 alias 没有这些键，写了报错。
 
 节点建法与编辑器一致：入图、给 guid、`PostPlacedNewNode`。状态机节点和 state 都在那一步里自建子图，所以 spec 不碰子图本身。
+
+### Widgets
+
+Op: `Rename` / `Modify`，都用 `Name` 点名控件树里的控件，按 spec 顺序执行，后面的能看到前面的结果。
+
+`Rename` 用 `NewName`。控件改名只能走这里：`WidgetLayoutImport` 是整树替换，靠「同名保 GUID」让动画绑定活过重建，改名恰好绕开那个前提，所以 Export 改 JSON 再 Import 那条路改不动名字。
+
+改名连带改掉的东西：
+
+| 落点 | 说明 |
+| --- | --- |
+| `WidgetVariableNameToGuidMap` | 换 key，GUID 值保留 |
+| widget animation | `AnimationBindings` 的 `WidgetName`，以及非 slot 绑定对应的 MovieScene possessable |
+| property binding | `Bindings` 的 `ObjectName` |
+| navigation | 其他控件指向它的 navigation binding |
+| desired focus | 类上记的 desired focus 控件名 |
+| 图里的变量引用 | Get / Set 节点一并改指 |
+
+新名字被占用是错误。父类上的 `BindWidget` / `BindWidgetOptional` 属性占用该名字是合法例外，那正是要对上的目标。
+
+`Modify` 用 `Properties` 写控件自身的属性，`Slot` 写它在父容器里的 slot 属性，两个可选但至少给一个。值的形态与 `DataAssetImport` 一致，字符串走 `ImportText`，对象与数组走 json 转换器。根控件没有 slot，对它发 `Slot` 是错误。
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/UI/WBP_Foo",
+      "Widgets": [
+        { "Op": "Rename", "Name": "OldBar", "NewName": "NewBar" },
+        { "Op": "Modify", "Name": "NewBar", "Properties": { "ToolTipText": "INVTEXT(\"Health\")" }, "Slot": { "Padding": "(Left=8.000000)" } }
+      ]
+    }
+  ]
+}
+```
+
+target 不是 WidgetBlueprint 却带了 `Widgets` key 是错误。
 
 ### Variables
 

@@ -41,6 +41,8 @@
 | 改既有变量的类型、分类、复制这些 flag | `EditBlueprint` 的 `Variables` 的 `Modify` | Edit |
 | 改既有状态机: 改 state 或 transition 的字段、改名、删、加 conduit 或 alias | `EditBlueprint` 的 `StateMachines` | Edit |
 | 状态机与 pose 图要排版 | `EditBlueprint` 的 `Layout`，认 anim schema | Edit |
+| 改 UMG 控件的名字，C++ 侧 `BindWidget` 改名后要让 WBP 跟上 | `EditBlueprint` 的 `Widgets` | Edit |
+| 改 UMG 控件或它 slot 的属性，不想整树替换 | `EditBlueprint` 的 `Widgets` | Edit |
 | 给 AnimSequence / AnimMontage 加 notify，或改既有 notify 的时间、轨道、参数 | `EditAnimAsset` 的 `Notifies` | Edit |
 | 把 `AnimAssetExport` 导出的 notify 参数改完喂回资产 | `EditAnimAsset` | Edit |
 | 改 AnimSequence 的曲线关键帧或 sync marker | `EditAnimAsset` 的 `Curves` / `SyncMarkers` | Edit |
@@ -188,6 +190,7 @@ Audit。
 | `Edit*` 不给 `-apply` 时编辑器还开着 | `EditBlueprint` 与 `EditAnimAsset` 的 dry run 靠进程退出丢弃内存里的改动，走 queue 通道没有这层保护，直接退 2。关掉编辑器跑 commandlet，或者确认无误直接 `-apply` |
 | 两次导出做 diff 时 `K2Node_MathExpression` 一片红 | 它每次加载重建内部图并换 `NodeGuid`，`SubGraphs` 子树的差是既有非确定性不是回归。比对时排除这棵子树 |
 | `WidgetLayoutImport` 是整树替换 | spec 必须描述完整的树，不是增量补丁 |
+| 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
 | `WidgetLayoutImport` 退出码 1 但资产其实写进去了 | 引擎会改写 commandlet 的退出码。判断成败以日志里的 `Imported layout into ...` 为准，别只看退出码 |
 | `CreateAsset` 漏了 `-unattended` | 引擎的 `FMessageDialog` 不检查 commandlet 模式，某些创建路径会弹窗把进程挂住。这个参数必填 |
 | `CreateAsset` 建 Texture2D 拿到空结果 | 静默失败，先查 `FactoryProperties` 有没有给 `Width` / `Height`，且必须是 2 的幂 |

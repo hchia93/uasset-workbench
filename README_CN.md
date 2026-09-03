@@ -165,7 +165,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +195,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +243,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +284,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +316,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +343,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +395,7 @@ MaterialInstance 导出参数覆写表。
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +445,7 @@ ISM / HISM / Foliage 组件的实例数超过 200 时只导出数量、包围盒
 
 ```json
 {
-    "ExporterVersion": "2.5.1",
+    "ExporterVersion": "2.5.2",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -506,7 +506,7 @@ spec 顶层字段。
 
 属性值的字符串形态就是 Export 导出的那种，例 `(Value=1.000000,SizeRule=Fill)`、`(Right=48.000000)`、`HAlign_Fill`。
 
-行为是整树替换，不是增量合并，spec 必须描述完整的树。`WidgetLayoutExport` 的产物可以直接当 Import 的输入，改布局的常规做法是先 Export 拿到当前树，改 JSON，再 Import 写回。
+行为是整树替换，不是增量合并，spec 必须描述完整的树。`WidgetLayoutExport` 的产物可以直接当 Import 的输入，改布局的常规做法是先 Export 拿到当前树，改 JSON，再 Import 写回。改名是例外，重建靠同名保住 widget animation 的绑定，所以走 Import 改名会让那些绑定悬空且不报错，改名只能走 `EditBlueprint` 的 `Widgets`。
 
 `ClassDefaults` 落在 generated class 的 CDO 上，`EditDefaultsOnly` 那类属性住在那里，不在控件树里。它在编译之后才应用，因为编译会重建 CDO。
 
@@ -615,7 +615,7 @@ Import 是照 spec 重新生成一份资产，Edit 是改动既有的那一份�
 
 | RunName | 改什么 | 默认行为 |
 | --- | --- | --- |
-| `EditBlueprint` | 组件、变量、默认值、函数、分发器、接口、状态机、图、排版 | dry run |
+| `EditBlueprint` | 组件、控件、变量、默认值、函数、分发器、接口、状态机、图、排版 | dry run |
 | `EditAnimAsset` | AnimSequence 与 AnimMontage 的 notify 与曲线，sequence 另有 sync marker，montage 另有 section 与 slot | dry run |
 | `EditTextureAsset` | Texture2D 的构建设置 | dry run |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 | dry run |
@@ -624,11 +624,12 @@ dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑
 
 **EditBlueprint**
 
-九个 writer，划分对齐编辑器自己的 Blueprint diff 把蓝图拆成的那几个面。
+十个 writer，划分对齐编辑器自己的 Blueprint diff 把蓝图拆成的那几个面。
 
 | Spec key | 对应 diff mode | 写什么 |
 | --- | --- | --- |
 | `Components` | `ComponentsMode` | SimpleConstructionScript 组件树 |
+| `Widgets` | `DesignerMode` | WidgetBlueprint 的控件树，改名与控件或 slot 属性 |
 | `Variables` | `MyBlueprintMode` | 成员变量，`Modify` 能给既有变量重定类型 |
 | `Defaults` | `DefaultsMode` | CDO 与组件模板的属性值，覆盖父 BP 继承来的组件 |
 | `Functions` | `MyBlueprintMode` | 函数图、签名、局部变量、access 与 flag |
@@ -641,10 +642,10 @@ dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑
 一个 target 只 load 一次资产，跑完 spec 点名的所有 writer，编译保存一次。writer 的执行顺序固定，与 spec 里 key 的顺序无关，因为后一个依赖前一个。
 
 ```
-Components -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
+Components -> Widgets -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
 ```
 
-`Graph` 能引用同一次运行里前面 writer 新建的组件、变量与函数入口，`Layout` 能用 `Graph` 给节点的 Id 寻址。这条依赖就是九个面合成一个 commandlet 而不是拆成九个的原因。
+`Graph` 能引用同一次运行里前面 writer 新建的组件、变量与函数入口，`Layout` 能用 `Graph` 给节点的 Id 寻址。这条依赖就是十个面合成一个 commandlet 而不是拆成十个的原因。
 
 | 面 | 能到哪 |
 | --- | --- |
@@ -820,7 +821,7 @@ UE 只是验证场，三样可复用的东西不依赖它。
 
 ## 版本
 
-当前版本: **2.5.1**
+当前版本: **2.5.2**
 
 定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`，同时嵌进每份导出 JSON 的 `ExporterVersion` 字段。
 
