@@ -64,6 +64,7 @@
 | 想知道哪些材质缺 usage flag、跟 Nanite 不兼容，或者哪个材质会拖慢 PIE 进入 | `AuditMaterial` | Audit |
 | 想测每个 sublevel 的加载卸载耗时 | `run_stream_metric.ps1` | 脚本 |
 | 想看每个 level 的组件数是否超预算 | 先 `LevelExport`，再 `level_budget_audit.py` | Export + 脚本 |
+| 想改 `CreateDefaultSubobject` 的名字，不想让派生 BP 留下孤儿组件 | 先 `rename_default_subobject.py`，再改 C++ | 脚本 |
 
 拿不准 Blueprint 里的问题出在 C++ 还是图上时，先 `BlueprintEdGraphExport` 看图，再决定。
 
