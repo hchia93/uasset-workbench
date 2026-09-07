@@ -165,7 +165,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +195,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +243,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +284,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +316,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +343,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +395,7 @@ MaterialInstance 导出参数覆写表。
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +445,7 @@ ISM / HISM / Foliage 组件的实例数超过 200 时只导出数量、包围盒
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -506,7 +506,7 @@ spec 顶层字段。
 
 属性值的字符串形态就是 Export 导出的那种，例 `(Value=1.000000,SizeRule=Fill)`、`(Right=48.000000)`、`HAlign_Fill`。
 
-行为是整树替换，不是增量合并，spec 必须描述完整的树。`WidgetLayoutExport` 的产物可以直接当 Import 的输入，改布局的常规做法是先 Export 拿到当前树，改 JSON，再 Import 写回。改名是例外，重建靠同名保住 widget animation 的绑定，所以走 Import 改名会让那些绑定悬空且不报错，改名只能走 `EditBlueprint` 的 `Widgets`。
+行为是整树替换，不是增量合并，spec 必须描述完整的树。`WidgetLayoutExport` 的产物可以直接当 Import 的输入，改布局的常规做法是先 Export 拿到当前树，改 JSON，再 Import 写回。改名是例外，重建靠同名保住 widget animation 的绑定，所以走 Import 改名会让那些绑定悬空且不报错，改名只能走 `EditBlueprint` 的 `Widgets`。增、删、挪也在那里，整树重写超过改动需要时走它。
 
 `ClassDefaults` 落在 generated class 的 CDO 上，`EditDefaultsOnly` 那类属性住在那里，不在控件树里。它在编译之后才应用，因为编译会重建 CDO。
 
@@ -624,12 +624,13 @@ dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑
 
 **EditBlueprint**
 
-十个 writer，划分对齐编辑器自己的 Blueprint diff 把蓝图拆成的那几个面。
+十一个 writer，划分对齐编辑器自己的 Blueprint diff 把蓝图拆成的那几个面。
 
 | Spec key | 对应 diff mode | 写什么 |
 | --- | --- | --- |
 | `Components` | `ComponentsMode` | SimpleConstructionScript 组件树 |
-| `Widgets` | `DesignerMode` | WidgetBlueprint 的控件树，改名与控件或 slot 属性 |
+| `Widgets` | `DesignerMode` | WidgetBlueprint 的控件树，增删改挪与控件或 slot 属性 |
+| `WidgetAnimations` | `DesignerMode` | WidgetBlueprint 的动画曲线，改既有通道的 key |
 | `Variables` | `MyBlueprintMode` | 成员变量，`Modify` 能给既有变量重定类型 |
 | `Defaults` | `DefaultsMode` | CDO 与组件模板的属性值，覆盖父 BP 继承来的组件 |
 | `Functions` | `MyBlueprintMode` | 函数图、签名、局部变量、access 与 flag |
@@ -642,13 +643,15 @@ dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑
 一个 target 只 load 一次资产，跑完 spec 点名的所有 writer，编译保存一次。writer 的执行顺序固定，与 spec 里 key 的顺序无关，因为后一个依赖前一个。
 
 ```
-Components -> Widgets -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
+Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
 ```
 
-`Graph` 能引用同一次运行里前面 writer 新建的组件、变量与函数入口，`Layout` 能用 `Graph` 给节点的 Id 寻址。这条依赖就是十个面合成一个 commandlet 而不是拆成十个的原因。
+`WidgetAnimations` 按控件名寻址且排在 `Widgets` 之后，同一次运行里改完名的控件动画能跟上。`Graph` 能引用同一次运行里前面 writer 新建的组件、变量与函数入口，`Layout` 能用 `Graph` 给节点的 Id 寻址。这条依赖就是十一个面合成一个 commandlet 而不是拆成十一个的原因。
 
 | 面 | 能到哪 |
 | --- | --- |
+| `Widgets` | `Add` / `Delete` / `Reparent` / `Rename` / `Modify`。不整树 Import 也能改结构。换父级不换控件对象，GUID、动画绑定、图里的引用都跟着走。面板还挂着子控件时 `Delete` 默认拒绝，要连子树删才给 `Recursive` |
+| `WidgetAnimations` | `SetKeys` 整条通道替换 key，按动画名、绑定控件、轨道与通道 meta 名寻址。字段名与 `WidgetLayoutExport` 打印的一致。只改 key，轨道和通道要先在编辑器里建 |
 | `Graph` 节点 | 25 种节点类型，从 `CallFunction`、`Branch` 到 `DynamicCast`、`MakeStruct` / `BreakStruct`、四种 `Switch`、`SpawnActor`、`Timeline`、`MathExpression` 与 `AnimGetter`。`Type` 以 `/` 开头当类路径解析，anim graph 节点走这条。表外的 `Type` 去 StandardMacros 里按图名查，所以 `Gate` 与 `DoOnce` 直接写就行 |
 | `Graph` 的 `Bind` | anim 节点的 property access 绑定，就是 Details 面板那个 Bind 下拉框。指向一条 transition 的 Id 就绑到它的 result 上 |
 | `Graph` 的 `ExposePins` | 露出或收起 anim 节点某个属性的 pin，按属性名寻址而不是数组下标 |
@@ -821,7 +824,7 @@ UE 只是验证场，三样可复用的东西不依赖它。
 
 ## 版本
 
-当前版本: **2.5.2**
+当前版本: **2.5.3**
 
 定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`，同时嵌进每份导出 JSON 的 `ExporterVersion` 字段。
 

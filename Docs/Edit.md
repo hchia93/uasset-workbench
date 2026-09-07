@@ -21,6 +21,7 @@
 | --- | --- | --- | --- |
 | `Components` | `FBlueprintComponentWriter` | `ComponentsMode` | SimpleConstructionScript 组件树 |
 | `Widgets` | `FBlueprintWidgetWriter` | `DesignerMode` | WidgetBlueprint 的控件树 |
+| `WidgetAnimations` | `FBlueprintWidgetAnimationWriter` | `DesignerMode` | WidgetBlueprint 的动画曲线 |
 | `Variables` | `FBlueprintVariableWriter` | `MyBlueprintMode` | 成员变量 |
 | `Defaults` | `FBlueprintDefaultsWriter` | `DefaultsMode` | CDO 与组件模板的属性值 |
 | `Functions` | `FBlueprintFunctionWriter` | `MyBlueprintMode` | 函数图 |
@@ -33,10 +34,10 @@
 执行顺序固定，与 spec 里的 key 顺序无关：
 
 ```
-Components -> Widgets -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
+Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
 ```
 
-后一个依赖前一个的结果。`Graph` 能引用同一次运行里新建的组件和变量，也能点名 `Functions` 注册的函数入口与 result 节点，`Layout` 能用 `Graph` 给节点的 `Id` 寻址，这是十个 writer 合成一个 commandlet 的原因。
+后一个依赖前一个的结果。`WidgetAnimations` 按控件名寻址，排在 `Widgets` 之后，同一次运行里改完名的控件动画能跟上。`Graph` 能引用同一次运行里新建的组件和变量，也能点名 `Functions` 注册的函数入口与 result 节点，`Layout` 能用 `Graph` 给节点的 `Id` 寻址，这是十一个 writer 合成一个 commandlet 的原因。
 
 ### 调用
 
@@ -224,7 +225,27 @@ transition 的结果 pin 绑定不在这里，走 `Graph` 的 `Bind`，`Node` �
 
 ### Widgets
 
-Op: `Rename` / `Modify`，都用 `Name` 点名控件树里的控件，按 spec 顺序执行，后面的能看到前面的结果。
+Op: `Add` / `Delete` / `Reparent` / `Rename` / `Modify`，都用 `Name` 点名控件树里的控件，按 spec 顺序执行，后面的能看到前面的结果。
+
+| Op | 参数 | 说明 |
+| --- | --- | --- |
+| `Add` | `Class`，`Parent` 或 `AsRoot`，`Index`，`Properties`，`Slot` | `Name` 是新控件名，已被占用是错误 |
+| `Delete` | `Recursive` | 面板还挂着子控件时默认拒绝，报出子控件名 |
+| `Reparent` | `Parent` 或 `AsRoot`，`Index`，`Slot` | 控件对象不变，GUID、动画绑定、图里的引用都跟着走 |
+
+`Class` 认三种写法：`SizeBox`、`/Script/UMG.SizeBox`、WidgetBlueprint 生成类的完整路径。与 `WidgetLayoutImport` 同一套解析。
+
+`Parent` 与 `AsRoot` 必须给且只能给一个。`Parent` 指向的控件不是面板是错误。
+
+`Index` 只对面板有意义，不给就追加到末尾。
+
+换父级会丢掉旧 slot，新 slot 由新面板的类型决定，要保留的 slot 属性在同一个 op 的 `Slot` 里重新给。
+
+把控件挪进它自己的子树是错误，检查在拆离之前跑。
+
+`Delete` 走引擎的 `DeleteWidgets`，动画绑定、属性绑定、图里的变量引用一并清理。
+
+拆掉一个只包着单个子控件的容器：`Reparent` 子控件到容器的父级，再 `Delete` 容器，两个 op 写在同一个 spec 里。
 
 `Rename` 用 `NewName`。控件改名只能走这里：`WidgetLayoutImport` 是整树替换，靠「同名保 GUID」让动画绑定活过重建，改名恰好绕开那个前提，所以 Export 改 JSON 再 Import 那条路改不动名字。
 
@@ -249,8 +270,12 @@ Op: `Rename` / `Modify`，都用 `Name` 点名控件树里的控件，按 spec �
     {
       "AssetPath": "/Game/UI/WBP_Foo",
       "Widgets": [
+        { "Op": "Add", "Class": "SizeBox", "Name": "BarBox", "Parent": "RootPanel", "Index": 0,
+          "Slot": { "Padding": "(Left=8.000000)" } },
         { "Op": "Rename", "Name": "OldBar", "NewName": "NewBar" },
-        { "Op": "Modify", "Name": "NewBar", "Properties": { "ToolTipText": "INVTEXT(\"Health\")" }, "Slot": { "Padding": "(Left=8.000000)" } }
+        { "Op": "Modify", "Name": "NewBar", "Properties": { "ToolTipText": "INVTEXT(\"Health\")" }, "Slot": { "Padding": "(Left=8.000000)" } },
+        { "Op": "Reparent", "Name": "NewBar", "Parent": "BarBox" },
+        { "Op": "Delete", "Name": "Obsolete", "Recursive": true }
       ]
     }
   ]
@@ -258,6 +283,45 @@ Op: `Rename` / `Modify`，都用 `Name` 点名控件树里的控件，按 spec �
 ```
 
 target 不是 WidgetBlueprint 却带了 `Widgets` key 是错误。
+
+### WidgetAnimations
+
+Op 只有 `SetKeys`。按 `Animation` 点名动画，再逐层定位到一条通道，整条通道的 key 被 `Keys` 替换。
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `Animation` | 是 | 动画显示名，与 `WidgetLayoutExport` 的 `Animations[].Name` 一致 |
+| `BoundWidget` | 是 | 轨道绑定的控件名 |
+| `TrackName` | 看情况 | 该控件有多条轨道时必填，匹配不到唯一一条会报出候选 |
+| `SectionIndex` | 否 | 默认 0 |
+| `Channel` | 是 | 通道的 meta 名，如 `Translation.X`、`Angle`，单通道轨道是 `None` |
+| `Keys` | 是 | `Time` 秒、`Value`、`Interp`（`Linear` / `Constant` / `Cubic`，不给沿用 Cubic） |
+
+字段名与 `WidgetLayoutExport` 的动画导出逐字对应，导出的 key 改完可以原样喂回。
+
+整条通道替换，不做按 index 打补丁。key 的时间和值一样常改，index 寻址在曲线变过之后会静默落到错的 key 上。
+
+只改 key，不建轨道不建通道。轨道本身要在编辑器里先建出来。
+
+`Time` 按秒给，按 MovieScene 的 tick resolution 折成帧。
+
+只动动画数据不动类，所以这一节单独跑时不触发结构重编译。
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/UI/WBP_Foo",
+      "WidgetAnimations": [
+        { "Op": "SetKeys", "Animation": "Intro", "BoundWidget": "NewBar", "Channel": "Translation.X",
+          "Keys": [ { "Time": 0.0, "Value": 80.0 },
+                    { "Time": 0.15, "Value": 16.0, "Interp": "Linear" },
+                    { "Time": 0.3, "Value": 0.0 } ] }
+      ]
+    }
+  ]
+}
+```
 
 ### Variables
 

@@ -43,6 +43,9 @@
 | 状态机与 pose 图要排版 | `EditBlueprint` 的 `Layout`，认 anim schema | Edit |
 | 改 UMG 控件的名字，C++ 侧 `BindWidget` 改名后要让 WBP 跟上 | `EditBlueprint` 的 `Widgets` | Edit |
 | 改 UMG 控件或它 slot 的属性，不想整树替换 | `EditBlueprint` 的 `Widgets` | Edit |
+| 往控件树里加、删、挪一个控件，不想整树替换 | `EditBlueprint` 的 `Widgets` 的 `Add` / `Delete` / `Reparent` | Edit |
+| 拆掉一个只包着单个子控件的容器 | `EditBlueprint` 的 `Widgets`，`Reparent` 子控件再 `Delete` 容器 | Edit |
+| 改 widget animation 的关键帧数值或时间 | `EditBlueprint` 的 `WidgetAnimations` | Edit |
 | 给 AnimSequence / AnimMontage 加 notify，或改既有 notify 的时间、轨道、参数 | `EditAnimAsset` 的 `Notifies` | Edit |
 | 把 `AnimAssetExport` 导出的 notify 参数改完喂回资产 | `EditAnimAsset` | Edit |
 | 改 AnimSequence 的曲线关键帧或 sync marker | `EditAnimAsset` 的 `Curves` / `SyncMarkers` | Edit |
@@ -193,6 +196,8 @@ Audit。
 | `WidgetLayoutImport` 是整树替换 | spec 必须描述完整的树，不是增量补丁 |
 | 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
 | `WidgetLayoutImport` 退出码 1 但资产其实写进去了 | 引擎会改写 commandlet 的退出码。判断成败以日志里的 `Imported layout into ...` 为准，别只看退出码 |
+| 以为 `Delete` 一个面板只删它自己 | 面板还挂着子控件时默认拒绝并报出子控件名。确实要连子树一起删才加 `Recursive` |
+| 想用 `WidgetAnimations` 建一条新轨道 | 它只改既有通道的 key，轨道和通道要先在编辑器的动画时间轴上建出来 |
 | `CreateAsset` 漏了 `-unattended` | 引擎的 `FMessageDialog` 不检查 commandlet 模式，某些创建路径会弹窗把进程挂住。这个参数必填 |
 | `CreateAsset` 建 Texture2D 拿到空结果 | 静默失败，先查 `FactoryProperties` 有没有给 `Width` / `Height`，且必须是 2 的幂 |
 | 想改材质的节点图，或增删 DataTable 的行 | 走 Python 更合适。`unreal.MaterialEditingLibrary` 与 `unreal.DataTableFunctionLibrary` 都有完整的脚本接口，后者的 `export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip，commandlet 那边反而绕 |

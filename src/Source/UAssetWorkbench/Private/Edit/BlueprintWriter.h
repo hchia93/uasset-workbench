@@ -46,6 +46,7 @@ public:
 
 TUniquePtr<IBlueprintWriter> MakeBlueprintComponentWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintWidgetWriter();
+TUniquePtr<IBlueprintWriter> MakeBlueprintWidgetAnimationWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintVariableWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintDefaultsWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintGraphWriter();

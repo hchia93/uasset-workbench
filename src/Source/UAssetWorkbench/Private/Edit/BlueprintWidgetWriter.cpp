@@ -6,6 +6,7 @@
 #include "Blueprint/WidgetNavigation.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelSlot.h"
+#include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -31,6 +32,124 @@ namespace
         });
 
         return FString::Join(Names, TEXT(", "));
+    }
+
+    // Same resolution order the importer uses, so a spec can name "SizeBox", "/Script/UMG.SizeBox" or a
+    // WidgetBlueprint generated class path and mean the same thing.
+    UClass* ResolveWidgetClass(const FString& ClassName)
+    {
+        if (ClassName.Contains(TEXT("/")))
+        {
+            return LoadObject<UClass>(nullptr, *ClassName);
+        }
+
+        if (UClass* UMGClass = UClass::TryFindTypeSlow<UClass>(FString::Printf(TEXT("/Script/UMG.%s"), *ClassName)))
+        {
+            return UMGClass;
+        }
+
+        return UClass::TryFindTypeSlow<UClass>(ClassName);
+    }
+
+    // Reparenting a widget under its own descendant would orphan the subtree from the root without the
+    // tree ever reporting an error, so the walk runs before anything is detached.
+    bool IsAncestorOf(const UWidget* Candidate, const UWidget* Widget)
+    {
+        for (const UWidget* Walker = Widget; Walker; Walker = Walker->GetParent())
+        {
+            if (Walker == Candidate)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Resolves either destination: a named panel, or the tree root when the spec says AsRoot.
+    bool AttachWidget(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, UWidget* Widget, const TSharedPtr<FJsonObject>& Desc, const TCHAR* OpLabel)
+    {
+        bool bAsRoot = false;
+        Desc->TryGetBoolField(TEXT("AsRoot"), bAsRoot);
+
+        FString ParentName;
+        const bool bHasParent = Desc->TryGetStringField(TEXT("Parent"), ParentName);
+        if (bAsRoot == bHasParent)
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: widget %s needs exactly one of Parent or AsRoot"), *Context.AssetPath, OpLabel);
+            return false;
+        }
+
+        if (bAsRoot)
+        {
+            WidgetBP->WidgetTree->Modify();
+            WidgetBP->WidgetTree->RootWidget = Widget;
+            return true;
+        }
+
+        UWidget* ParentWidget = WidgetBP->WidgetTree->FindWidget(FName(*ParentName));
+        if (!ParentWidget)
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no widget named '%s'. Tree has: %s"), *Context.AssetPath, *ParentName, *DescribeWidgets(WidgetBP));
+            return false;
+        }
+
+        UPanelWidget* Panel = Cast<UPanelWidget>(ParentWidget);
+        if (!Panel)
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' is a %s, not a panel, it cannot take children"), *Context.AssetPath, *ParentName, *ParentWidget->GetClass()->GetName());
+            return false;
+        }
+
+        if (IsAncestorOf(Widget, Panel))
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' sits inside '%s', reparenting there would detach the subtree"), *Context.AssetPath, *ParentName, *Widget->GetName());
+            return false;
+        }
+
+        Panel->Modify();
+
+        int32 Index = INDEX_NONE;
+        const bool bHasIndex = Desc->TryGetNumberField(TEXT("Index"), Index);
+        UPanelSlot* Slot = bHasIndex ? Panel->InsertChildAt(Index, Widget) : Panel->AddChild(Widget);
+        if (!Slot)
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' rejected child '%s', it is likely at its child limit"), *Context.AssetPath, *ParentName, *Widget->GetName());
+            return false;
+        }
+
+        const TSharedPtr<FJsonObject>* SlotProperties = nullptr;
+        if (!Desc->TryGetObjectField(TEXT("Slot"), SlotProperties))
+        {
+            return true;
+        }
+
+        int32 Failures = 0;
+        Slot->Modify();
+        UAssetWorkbench::ApplyProperties(Slot, *SlotProperties, Failures);
+        if (Failures > 0)
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: %d slot property write(s) failed on '%s'"), *Context.AssetPath, Failures, *Widget->GetName());
+            return false;
+        }
+
+        return true;
+    }
+
+    // The old parent has to let go before the new one takes it, and a root widget has no parent to ask.
+    void DetachWidget(UWidgetBlueprint* WidgetBP, UWidget* Widget)
+    {
+        if (UPanelWidget* OldParent = Widget->GetParent())
+        {
+            OldParent->Modify();
+            OldParent->RemoveChild(Widget);
+            return;
+        }
+
+        if (WidgetBP->WidgetTree->RootWidget == Widget)
+        {
+            WidgetBP->WidgetTree->Modify();
+            WidgetBP->WidgetTree->RootWidget = nullptr;
+        }
     }
 
     // The engine's RenameWidget lives on FWidgetBlueprintEditor, which a commandlet has no way to build.
@@ -233,8 +352,121 @@ namespace
                 return ApplyModify(Context, WidgetBP, Name, Desc);
             }
 
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown widget Op '%s'. Accepted: Rename, Modify"), *Context.AssetPath, *Op);
+            if (Op == TEXT("Add"))
+            {
+                return ApplyAdd(Context, WidgetBP, Name, Desc);
+            }
+
+            if (Op == TEXT("Delete"))
+            {
+                return ApplyDelete(Context, WidgetBP, Name, Desc);
+            }
+
+            if (Op == TEXT("Reparent"))
+            {
+                return ApplyReparent(Context, WidgetBP, Name, Desc);
+            }
+
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown widget Op '%s'. Accepted: Add, Delete, Reparent, Rename, Modify"), *Context.AssetPath, *Op);
             return false;
+        }
+
+        bool ApplyAdd(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& Name, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            FString ClassName;
+            if (!Desc->TryGetStringField(TEXT("Class"), ClassName))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: widget Add needs a Class"), *Context.AssetPath);
+                return false;
+            }
+
+            UClass* WidgetClass = ResolveWidgetClass(ClassName);
+            if (!WidgetClass || !WidgetClass->IsChildOf(UWidget::StaticClass()))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' does not resolve to a UWidget class"), *Context.AssetPath, *ClassName);
+                return false;
+            }
+
+            const FName NewName(*Name);
+            if (WidgetBP->WidgetTree->FindWidget(NewName))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' is already taken in this Blueprint"), *Context.AssetPath, *Name);
+                return false;
+            }
+
+            WidgetBP->Modify();
+            WidgetBP->WidgetTree->Modify();
+            UWidget* Widget = WidgetBP->WidgetTree->ConstructWidget<UWidget>(WidgetClass, NewName);
+            if (!Widget)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: failed to construct '%s' of class %s"), *Context.AssetPath, *Name, *ClassName);
+                return false;
+            }
+
+            Widget->SetDisplayLabel(Name);
+
+            const TSharedPtr<FJsonObject>* Properties = nullptr;
+            if (Desc->TryGetObjectField(TEXT("Properties"), Properties))
+            {
+                int32 Failures = 0;
+                UAssetWorkbench::ApplyProperties(Widget, *Properties, Failures);
+                if (Failures > 0)
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: %d property write(s) failed on '%s'"), *Context.AssetPath, Failures, *Name);
+                    return false;
+                }
+            }
+
+            return AttachWidget(Context, WidgetBP, Widget, Desc, TEXT("Add"));
+        }
+
+        bool ApplyDelete(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& Name, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidget* Widget = WidgetBP->WidgetTree->FindWidget(FName(*Name));
+            if (!Widget)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no widget named '%s'. Tree has: %s"), *Context.AssetPath, *Name, *DescribeWidgets(WidgetBP));
+                return false;
+            }
+
+            // Deleting a panel takes its whole subtree with it, which is rarely what a spec author typed.
+            bool bRecursive = false;
+            Desc->TryGetBoolField(TEXT("Recursive"), bRecursive);
+
+            const UPanelWidget* Panel = Cast<UPanelWidget>(Widget);
+            if (Panel && Panel->HasAnyChildren() && !bRecursive)
+            {
+                TArray<FString> ChildNames;
+                for (int32 ChildIndex = 0; ChildIndex < Panel->GetChildrenCount(); ChildIndex++)
+                {
+                    if (const UWidget* Child = Panel->GetChildAt(ChildIndex))
+                    {
+                        ChildNames.Add(Child->GetName());
+                    }
+                }
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' still holds %s. Reparent them first, or pass Recursive to delete the subtree"), *Context.AssetPath, *Name, *FString::Join(ChildNames, TEXT(", ")));
+                return false;
+            }
+
+            WidgetBP->Modify();
+            WidgetBP->WidgetTree->Modify();
+            FWidgetBlueprintEditorUtils::DeleteWidgets(WidgetBP, { Widget }, FWidgetBlueprintEditorUtils::EDeleteWidgetWarningType::DeleteSilently);
+            return true;
+        }
+
+        bool ApplyReparent(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& Name, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidget* Widget = WidgetBP->WidgetTree->FindWidget(FName(*Name));
+            if (!Widget)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no widget named '%s'. Tree has: %s"), *Context.AssetPath, *Name, *DescribeWidgets(WidgetBP));
+                return false;
+            }
+
+            WidgetBP->Modify();
+            Widget->Modify();
+            DetachWidget(WidgetBP, Widget);
+            return AttachWidget(Context, WidgetBP, Widget, Desc, TEXT("Reparent"));
         }
 
         bool ApplyModify(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& Name, const TSharedPtr<FJsonObject>& Desc) const

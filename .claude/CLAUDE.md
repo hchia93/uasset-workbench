@@ -1,6 +1,6 @@
 # UAsset Workbench
 
-Unreal Engine 5 Editor-only plugin，版本 2.3.1。让脚本与 AI agent 能对 uasset 做非交互操作，五组能力 Export / Import / Edit / Migrate / Audit。
+Unreal Engine 5 Editor-only plugin，版本 2.5.3。让脚本与 AI agent 能对 uasset 做非交互操作，五组能力 Export / Import / Edit / Migrate / Audit。
 
 ## 项目结构
 

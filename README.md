@@ -165,7 +165,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +195,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +243,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +284,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +316,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +343,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +395,7 @@ MaterialInstance exports the parameter override table.
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +445,7 @@ ISM / HISM / Foliage components with more than 200 instances export only the cou
 
 ```json
 {
-    "ExporterVersion": "2.5.2",
+    "ExporterVersion": "2.5.3",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -506,7 +506,7 @@ Node fields.
 
 Property value strings take the same form Export emits, e.g. `(Value=1.000000,SizeRule=Fill)`, `(Right=48.000000)`, `HAlign_Fill`.
 
-The behavior is whole-tree replacement, not incremental merge, so the spec must describe the complete tree. A `WidgetLayoutExport` output feeds straight back in as Import input, and the usual way to change a layout is Export the current tree, edit the JSON, Import it back. Renaming is the exception, the rebuild keeps widget animation bindings alive by matching names, so a rename through Import silently orphans them and has to go through `EditBlueprint`'s `Widgets` instead.
+The behavior is whole-tree replacement, not incremental merge, so the spec must describe the complete tree. A `WidgetLayoutExport` output feeds straight back in as Import input, and the usual way to change a layout is Export the current tree, edit the JSON, Import it back. Renaming is the exception, the rebuild keeps widget animation bindings alive by matching names, so a rename through Import silently orphans them and has to go through `EditBlueprint`'s `Widgets` instead. Add, delete and reparent live there too, for when a whole-tree rewrite is more than the change needs.
 
 `ClassDefaults` lands on the generated class CDO, which is where `EditDefaultsOnly` properties live rather than in the widget tree. It is applied after the compile, because the compile rebuilds the CDO.
 
@@ -624,12 +624,13 @@ Dry run is not a preview. Without `-apply` every writer still runs against the r
 
 **EditBlueprint**
 
-Ten writers, split along the same facets the editor's own Blueprint diff splits a Blueprint into.
+Eleven writers, split along the same facets the editor's own Blueprint diff splits a Blueprint into.
 
 | Spec key | Diff mode it mirrors | What it writes |
 | --- | --- | --- |
 | `Components` | `ComponentsMode` | SimpleConstructionScript component tree |
-| `Widgets` | `DesignerMode` | WidgetBlueprint widget tree, renames and widget or slot properties |
+| `Widgets` | `DesignerMode` | WidgetBlueprint widget tree, add / delete / reparent / rename, widget or slot properties |
+| `WidgetAnimations` | `DesignerMode` | WidgetBlueprint animation curves, keys on an existing channel |
 | `Variables` | `MyBlueprintMode` | member variables, `Modify` retypes an existing one |
 | `Defaults` | `DefaultsMode` | CDO and component template values, reaching components inherited from a parent Blueprint |
 | `Functions` | `MyBlueprintMode` | function graphs, signature, local variables, access and flags |
@@ -642,13 +643,15 @@ Ten writers, split along the same facets the editor's own Blueprint diff splits 
 One target loads the asset once, runs every writer the spec names, then compiles and saves once. Writers run in a fixed order regardless of key order in the spec, because each depends on the last.
 
 ```
-Components -> Widgets -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
+Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
 ```
 
-`Graph` can reference the components, variables and function entry points the earlier writers made, and `Layout` addresses nodes by the Id `Graph` gave them. That dependency is why these are one commandlet rather than ten.
+`WidgetAnimations` addresses widgets by name and runs after `Widgets`, so an animation follows a widget renamed in the same run. `Graph` can reference the components, variables and function entry points the earlier writers made, and `Layout` addresses nodes by the Id `Graph` gave them. That dependency is why these are one commandlet rather than eleven.
 
 | Facet | What it reaches |
 | --- | --- |
+| `Widgets` | `Add` / `Delete` / `Reparent` / `Rename` / `Modify`. Structural edits without a whole-tree Import. A reparent keeps the widget object, so its GUID, animation bindings and graph references follow it. Deleting a panel that still holds children is refused unless `Recursive` |
+| `WidgetAnimations` | `SetKeys` replaces one channel's keys whole, addressed by animation, bound widget, track and channel meta name. Field names match what `WidgetLayoutExport` prints. Keys only, tracks and channels are made in the editor |
 | `Graph` nodes | 25 node types, from `CallFunction` and `Branch` through `DynamicCast`, `MakeStruct` / `BreakStruct`, the four `Switch` kinds, `SpawnActor`, `Timeline`, `MathExpression` and `AnimGetter`. A `Type` starting with `/` is read as a class path, which is how anim graph nodes get built. A `Type` outside the table resolves as a StandardMacros graph name, so `Gate` and `DoOnce` need no ceremony |
 | `Graph` `Bind` | Property-access bindings on anim nodes, the Bind dropdown in the Details panel. Aimed at a transition's Id it binds that transition's result |
 | `Graph` `ExposePins` | Shows or hides the pin for an anim node property, addressed by name rather than by array index |
@@ -821,7 +824,7 @@ UE is only the proving ground, the three reusable parts do not depend on it.
 
 ## Version
 
-Current version: **2.5.2**
+Current version: **2.5.3**
 
 Defined in `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`, and embedded in the `ExporterVersion` field of every exported JSON.
 
