@@ -51,8 +51,9 @@ namespace
     }
 
     // Walks "Array[2].Field" down to the property that takes the value. Owner tracks the last instanced
-    // sub-object crossed, ImportText resolves object references against it.
-    bool ResolvePropertyPath(UObject* Root, const FString& Path, FProperty*& OutProperty, void*& OutAddress, UObject*& OutOwner)
+    // sub-object crossed, ImportText resolves object references against it. Rooting at a bare struct is
+    // what lets a DataTable row take the same paths a UObject does.
+    bool ResolvePropertyPath(UStruct* RootStruct, void* RootBase, UObject* RootOwner, const FString& Path, FProperty*& OutProperty, void*& OutAddress, UObject*& OutOwner)
     {
         TArray<FString> Segments;
         Path.ParseIntoArray(Segments, TEXT("."));
@@ -61,9 +62,9 @@ namespace
             return false;
         }
 
-        UStruct* Struct = Root->GetClass();
-        void* Base = Root;
-        UObject* Owner = Root;
+        UStruct* Struct = RootStruct;
+        void* Base = RootBase;
+        UObject* Owner = RootOwner;
 
         for (int32 SegmentIndex = 0; SegmentIndex < Segments.Num(); ++SegmentIndex)
         {
@@ -226,16 +227,21 @@ TArray<FString> UAssetWorkbench::ParseAssetPaths(const FString& Params)
 
 int32 UAssetWorkbench::ApplyProperties(UObject* Target, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures)
 {
+    return ApplyStructProperties(Target->GetClass(), Target, Target, Properties, OutFailures);
+}
+
+int32 UAssetWorkbench::ApplyStructProperties(UStruct* Struct, void* Base, UObject* Owner, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures)
+{
     int32 Written = 0;
 
     for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Properties->Values)
     {
         FProperty* Property = nullptr;
         void* Address = nullptr;
-        UObject* Owner = nullptr;
-        if (!ResolvePropertyPath(Target, Pair.Key, Property, Address, Owner))
+        UObject* ValueOwner = nullptr;
+        if (!ResolvePropertyPath(Struct, Base, Owner, Pair.Key, Property, Address, ValueOwner))
         {
-            UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("Cannot resolve %s on %s"), *Pair.Key, *Target->GetClass()->GetName());
+            UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("Cannot resolve %s on %s"), *Pair.Key, *Struct->GetName());
             ++OutFailures;
             continue;
         }
@@ -245,14 +251,14 @@ int32 UAssetWorkbench::ApplyProperties(UObject* Target, const TSharedPtr<FJsonOb
         if (Pair.Value->TryGetString(StringValue))
         {
             FString Before;
-            Property->ExportTextItem_Direct(Before, Address, nullptr, Owner, PPF_None);
+            Property->ExportTextItem_Direct(Before, Address, nullptr, ValueOwner, PPF_None);
 
-            if (Property->ImportText_Direct(*StringValue, Address, Owner, PPF_None))
+            if (Property->ImportText_Direct(*StringValue, Address, ValueOwner, PPF_None))
             {
                 // ImportText reports success for a literal it silently ignores, an empty struct literal
                 // being the usual one. Reading the value back is the only way to catch that.
                 FString After;
-                Property->ExportTextItem_Direct(After, Address, nullptr, Owner, PPF_None);
+                Property->ExportTextItem_Direct(After, Address, nullptr, ValueOwner, PPF_None);
                 if (Before == After)
                 {
                     UE_LOG(LogUAssetWorkbenchCore, Warning, TEXT("%s = %s left the value unchanged, it either already held it or the literal writes nothing"), *Pair.Key, *StringValue);

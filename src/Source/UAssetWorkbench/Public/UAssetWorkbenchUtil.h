@@ -51,6 +51,10 @@ namespace UAssetWorkbench
     // string value goes through ImportText, the exporter's own format, anything else through the converter.
     int32 ApplyProperties(UObject* Target, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);
 
+    // Same path syntax rooted at a bare struct instance, which is how a DataTable row is reached.
+    // Owner only resolves object references inside a literal, it is not written to.
+    int32 ApplyStructProperties(UStruct* Struct, void* Base, UObject* Owner, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);
+
     // Map a /Game/... asset path to <ProjectDir>/Intermediate/UAssetExport/Game/.../<asset>.json
     FString GetExportPath(const FString& AssetPath);
 

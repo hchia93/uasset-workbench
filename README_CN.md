@@ -26,7 +26,7 @@
 | --- | --- | --- | --- |
 | Export | 读 uasset 结构导出 JSON | `Intermediate/UAssetExport` 下的 JSON | 11 |
 | Import | 读 JSON spec 写回或创建 uasset | 被修改或新建的 uasset | 3 |
-| Edit | 按意图修改既有 uasset | 被修改的 uasset | 4 |
+| Edit | 按意图修改既有 uasset | 被修改的 uasset | 5 |
 | Migrate | C++ 或资产改名后修复引用 | 被修改的 uasset | 8 |
 | Audit | 只读检查产出报告 | 报告 JSON | 4 |
 
@@ -165,7 +165,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +195,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +243,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +284,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +316,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +343,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +395,7 @@ MaterialInstance 导出参数覆写表。
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +445,7 @@ ISM / HISM / Foliage 组件的实例数超过 200 时只导出数量、包围盒
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -609,7 +609,7 @@ spec 顶层字段。
 </details>
 
 <details>
-<summary><b>Edit</b>，4 个 commandlet</summary>
+<summary><b>Edit</b>，5 个 commandlet</summary>
 
 Import 是照 spec 重新生成一份资产，Edit 是改动既有的那一份，一个面配一个 writer。这里是插件做得最多的地方，也是 agent 能交回一个改动而不是一段说明的地方。
 
@@ -619,6 +619,7 @@ Import 是照 spec 重新生成一份资产，Edit 是改动既有的那一份�
 | `EditAnimAsset` | AnimSequence 与 AnimMontage 的 notify 与曲线，sequence 另有 sync marker，montage 另有 section 与 slot | dry run |
 | `EditTextureAsset` | Texture2D 的构建设置 | dry run |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 | dry run |
+| `EditDataTable` | DataTable 既有行的属性值 | dry run |
 
 dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑一遍，只跳过保存，所以 dry run 干净就是 spec 真的校验过了。改动随进程退出丢弃。
 
@@ -680,6 +681,10 @@ headless 下 Slate 没量过任何东西，所以 `Layout` 的节点尺寸是从
 两个都原样吃各自 audit 产出的 `Spec` 块，所以 `AuditTexture` 接 `EditTextureAsset`、`AuditMaterial` 接 `EditMaterialAsset` 是一对查完就修的组合，中间没有翻译步骤。
 
 `EditTextureAsset` 写 17 项构建设置，LOD group、压缩、sRGB、mip 生成、尺寸上限、streaming、虚拟纹理、过滤与寻址。`EditMaterialAsset` 在基材质上写全部 23 个 usage flag 加 BlendMode、domain、ShadingModel、双面与 opacity mask 裁剪值，在实例上写 parent、标量 / 向量 / 贴图 / static switch 参数与 base property override。材质节点图不在范围内，那是 Python 的 `unreal.MaterialEditingLibrary` 的活。
+
+**EditDataTable**
+
+往 DataTable 的既有行里写属性值，按行名寻址，属性路径以行结构体为根，`Field.Sub[2].Leaf` 的语法与 `EditBlueprint` 那组 writer 完全一致，所以 `DataTableExport` 导出的值改完可以原样喂回。增删行不在范围内，那是 Python 的 `unreal.DataTableFunctionLibrary` 的活。
 
 </details>
 
@@ -806,7 +811,7 @@ workbench 走 commandlet 加引擎稳定 API，绕开正在演进的那一层。
 | `Docs/AI-Guide.md` | 给 AI agent 的调用手册，覆盖全部能力的决策表加调用模板加常见坑 |
 | `Docs/Export.md` | Export 组，11 个 commandlet，每个 JSON 字段 |
 | `Docs/Import.md` | Import 组，3 个 commandlet，spec 格式 |
-| `Docs/Edit.md` | Edit 组，4 个 commandlet，每个 spec key 与每个 layout op |
+| `Docs/Edit.md` | Edit 组，5 个 commandlet，每个 spec key 与每个 layout op |
 | `Docs/Migrate.md` | Migrate 组，8 个 commandlet |
 | `Docs/Audit.md` | Audit 组，4 个 commandlet，完整规则表与 stream metric 工作流 |
 
@@ -824,7 +829,7 @@ UE 只是验证场，三样可复用的东西不依赖它。
 
 ## 版本
 
-当前版本: **2.5.3**
+当前版本: **2.5.4**
 
 定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`，同时嵌进每份导出 JSON 的 `ExporterVersion` 字段。
 

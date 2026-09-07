@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
-	"Version": 20503,
-	"VersionName": "2.5.3",
+	"Version": 20504,
+	"VersionName": "2.5.4",
 	"FriendlyName": "UAsset Workbench",
-	"Description": "Headless uasset operations for scripts and AI agents: export asset structure to JSON, build assets back from a JSON spec, and repair Blueprint references after a C++ rename.",
+	"Description": "Headless uasset operations for scripts and AI agents: export asset structure to JSON, build assets from a JSON spec, edit Blueprints, animations, textures, materials and DataTables in place, migrate references after a rename, and audit levels, textures and materials.",
 	"Category": "Editor",
 	"CreatedBy": "",
 	"CanContainContent": false,

@@ -10,6 +10,7 @@
 | `EditAnimAsset` | AnimSequence / AnimMontage 的 notify 与曲线，Sequence 另有 sync marker，Montage 另有 section 与 slot |
 | `EditTextureAsset` | Texture2D 的构建设置 |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 |
+| `EditDataTable` | DataTable 既有行的属性值 |
 
 ## EditBlueprint
 
@@ -1033,6 +1034,53 @@ dry run 做完除保存外的全部步骤。整轮共用一个 `FMaterialUpdateC
 | 2 | 编辑器在运行 |
 
 任一 target 失败整轮不落盘。
+
+## EditDataTable
+
+用途: 按 spec 往 DataTable 的既有行里写属性值。增删行不在范围内，那件事走 Python 的 `unreal.DataTableFunctionLibrary`。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    EditDataTable "" 10 600 "-spec=C:/path/spec.json -apply"
+```
+
+无 `-apply` 是 dry run，规则与 `EditBlueprint` 一致：改动靠进程退出丢弃，编辑器开着走 queue 通道时直接退 2。AssetList 传空字符串，target 写在 spec 里。
+
+### Spec
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/UI/DT_TextStyle",
+      "Rows": [
+        { "Op": "Modify", "Row": "Default",
+          "Properties": {
+            "TextStyle.Font.OutlineSettings.OutlineSize": "1",
+            "TextStyle.ShadowOffset": "(X=0.800000,Y=0.800000)"
+          } }
+      ]
+    }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `AssetPath` | 是 | DataTable 资产路径 |
+| `Rows` | 是 | 行操作数组 |
+| `Op` | 是 | 只有 `Modify` |
+| `Row` | 是 | 行名，匹配不到会报出表里实际有哪些行 |
+| `Properties` | 是 | 属性路径到值，路径语法与 `EditBlueprint` 那组的 writer 一致 |
+
+属性路径以行结构体为根，`Field.Sub[2].Leaf` 这套语法照用。`DataTableExport` 导出的值改完可以原样喂回。
+
+只改既有行，行名不存在是错误。
+
+落盘前调 `HandleDataTableChanged`，不然编辑器里要重新加载才看得到新值。
 
 ## 约束
 

@@ -52,6 +52,7 @@
 | 改 Montage 的段落链，或 slot 里的分段与 play rate | `EditAnimAsset` 的 `Sections` / `Slots` | Edit |
 | 改贴图的 LOD group、压缩格式、sRGB、mip、尺寸上限 | `EditTextureAsset` | Edit |
 | 改材质的 usage flag、BlendMode、ShadingModel，或 MI 的 parent 与参数覆写 | `EditMaterialAsset` | Edit |
+| 改 DataTable 既有行的属性值 | `EditDataTable` | Edit |
 | C++ 改名后 BP 事件不再触发 | `RedirectBlueprintEvent` | Migrate |
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
 | 图逻辑搬进 C++ 后，BP 图里作废的那几个节点要删掉 | `DeleteBlueprintNode` | Migrate |
@@ -112,6 +113,8 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     10 600 \
     '-spec="C:/temp/create.spec.json" -unattended'
 ```
+
+Edit。五个 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串，dry run 就是不给 `-apply`。
 
 Migrate。两个 redirect 与 `DeleteBlueprintNode` 默认 dry run，确认输出无误后补 `-apply`。
 
@@ -191,7 +194,7 @@ Audit。
 | `RedirectBlueprintEvent`、`RedirectBlueprintPin`、`DeleteBlueprintNode` 默认不写盘 | 先读 dry run 输出，确认命中的资产与节点，再加 `-apply` |
 | `DeleteBlueprintNode` 的 node id 靠手写或从图上认 | id 只能从 `BlueprintEdGraphExport` 加 `-graphs` 的导出里原样抄。没命中的 id 会在结尾统一报出来，别当成删干净了 |
 | 以为删了节点，只被它引用的变量也跟着没了 | 删节点只切连线，不重新接线也不动变量。失去引用的 Blueprint 变量另外处理，schema 拒删的 function entry / result 会被跳过并报警 |
-| `Edit*` 不给 `-apply` 时编辑器还开着 | `EditBlueprint` 与 `EditAnimAsset` 的 dry run 靠进程退出丢弃内存里的改动，走 queue 通道没有这层保护，直接退 2。关掉编辑器跑 commandlet，或者确认无误直接 `-apply` |
+| `Edit*` 不给 `-apply` 时编辑器还开着 | `EditBlueprint`、`EditAnimAsset`、`EditDataTable` 的 dry run 靠进程退出丢弃内存里的改动，走 queue 通道没有这层保护，直接退 2。关掉编辑器跑 commandlet，或者确认无误直接 `-apply` |
 | 两次导出做 diff 时 `K2Node_MathExpression` 一片红 | 它每次加载重建内部图并换 `NodeGuid`，`SubGraphs` 子树的差是既有非确定性不是回归。比对时排除这棵子树 |
 | `WidgetLayoutImport` 是整树替换 | spec 必须描述完整的树，不是增量补丁 |
 | 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
@@ -200,7 +203,7 @@ Audit。
 | 想用 `WidgetAnimations` 建一条新轨道 | 它只改既有通道的 key，轨道和通道要先在编辑器的动画时间轴上建出来 |
 | `CreateAsset` 漏了 `-unattended` | 引擎的 `FMessageDialog` 不检查 commandlet 模式，某些创建路径会弹窗把进程挂住。这个参数必填 |
 | `CreateAsset` 建 Texture2D 拿到空结果 | 静默失败，先查 `FactoryProperties` 有没有给 `Width` / `Height`，且必须是 2 的幂 |
-| 想改材质的节点图，或增删 DataTable 的行 | 走 Python 更合适。`unreal.MaterialEditingLibrary` 与 `unreal.DataTableFunctionLibrary` 都有完整的脚本接口，后者的 `export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip，commandlet 那边反而绕 |
+| 想改材质的节点图，或增删 DataTable 的行 | 走 Python 更合适。`unreal.MaterialEditingLibrary` 与 `unreal.DataTableFunctionLibrary` 都有完整的脚本接口，后者的 `export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip。改既有行的属性值不在此列，走 `EditDataTable` |
 | 导出产物不入版本控制 | `Intermediate/UAssetExport` 是临时目录，需要留证据就自行拷走 |
 | 把 Audit 的退出码 3 当成失败 | 3 不是失败，运行本身成功，只是报告里有要处理的东西。跑不起来才是 1 |
 | `AuditLevelReference` 报出一大堆破损 | 先确认项目的插件全部启用。未挂载 content root 下的依赖会被判成 missing，那是假破损 |

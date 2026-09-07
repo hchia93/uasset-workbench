@@ -26,7 +26,7 @@ Five problems, five capability groups.
 | --- | --- | --- | --- |
 | Export | Read uasset structure, write JSON | JSON under `Intermediate/UAssetExport` | 11 |
 | Import | Read a JSON spec, write back to or create uassets | modified or new uassets | 3 |
-| Edit | Change an existing uasset to match an intent | modified uassets | 4 |
+| Edit | Change an existing uasset to match an intent | modified uassets | 5 |
 | Migrate | Fix references after a C++ or asset rename | modified uassets | 8 |
 | Audit | Read-only checks producing a report | report JSON | 4 |
 
@@ -165,7 +165,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +195,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +243,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +284,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +316,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +343,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +395,7 @@ MaterialInstance exports the parameter override table.
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +445,7 @@ ISM / HISM / Foliage components with more than 200 instances export only the cou
 
 ```json
 {
-    "ExporterVersion": "2.5.3",
+    "ExporterVersion": "2.5.4",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -609,7 +609,7 @@ Material node graphs are out of reach. `CreateAsset` produces an empty material,
 </details>
 
 <details>
-<summary><b>Edit</b>, 4 commandlets</summary>
+<summary><b>Edit</b>, 5 commandlets</summary>
 
 Import regenerates an asset from a spec. Edit changes one that already exists, one writer per facet. This is where the plugin does the most, and what lets an agent hand back a change rather than a description of one.
 
@@ -619,6 +619,7 @@ Import regenerates an asset from a spec. Edit changes one that already exists, o
 | `EditAnimAsset` | AnimSequence and AnimMontage notifies and curves, sync markers on a sequence, sections and slots on a montage | dry run |
 | `EditTextureAsset` | Texture2D build settings | dry run |
 | `EditMaterialAsset` | Material usage flags and base settings, MaterialInstanceConstant parent and parameter overrides | dry run |
+| `EditDataTable` | Property values on existing DataTable rows | dry run |
 
 Dry run is not a preview. Without `-apply` every writer still runs against the real asset and only the save is skipped, so a clean dry run means the spec validated for real. The changes die with the process.
 
@@ -680,6 +681,10 @@ Order is fixed at `Slots` -> `Sections` -> `Curves` -> `SyncMarkers` -> `Notifie
 Both consume the `Spec` block their audit emits verbatim, so `AuditTexture` into `EditTextureAsset` and `AuditMaterial` into `EditMaterialAsset` are a find-then-fix pair with no translation step in between.
 
 `EditTextureAsset` writes 17 build settings, LOD group, compression, sRGB, mip generation, size cap, streaming, virtual texturing, filtering and addressing. `EditMaterialAsset` writes all 23 usage flags plus blend mode, domain, shading model, two-sided and opacity mask clip value on a base material, and parent, scalar / vector / texture / static switch parameters and base property overrides on an instance. Material node graphs stay out of scope, Python's `unreal.MaterialEditingLibrary` covers those.
+
+**EditDataTable**
+
+Writes property values into rows that already exist, addressed by row name, with the property path rooted at the row struct and taking the same `Field.Sub[2].Leaf` syntax the Blueprint writers do, so a `DataTableExport` value edited in place feeds straight back. Adding and deleting rows stays out of scope, Python's `unreal.DataTableFunctionLibrary` covers those.
 
 </details>
 
@@ -806,7 +811,7 @@ Prerequisites: Unreal Engine 5.7, and the plugin must be compiled with the proje
 | `Docs/AI-Guide.md` | Call manual for AI agents, a decision table covering every capability, call templates, common pitfalls |
 | `Docs/Export.md` | Export group, 11 commandlets, every JSON field |
 | `Docs/Import.md` | Import group, 3 commandlets, spec format |
-| `Docs/Edit.md` | Edit group, 4 commandlets, every spec key and every layout op |
+| `Docs/Edit.md` | Edit group, 5 commandlets, every spec key and every layout op |
 | `Docs/Migrate.md` | Migrate group, 8 commandlets |
 | `Docs/Audit.md` | Audit group, 4 commandlets, full rule tables, stream metric workflow |
 
@@ -824,7 +829,7 @@ UE is only the proving ground, the three reusable parts do not depend on it.
 
 ## Version
 
-Current version: **2.5.3**
+Current version: **2.5.4**
 
 Defined in `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`, and embedded in the `ExporterVersion` field of every exported JSON.
 
