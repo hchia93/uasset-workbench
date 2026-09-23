@@ -1,7 +1,10 @@
 #include "Edit/BlueprintWriter.h"
 #include "UAssetWorkbenchModule.h"
 
+#include "Animation/MovieScene2DTransformTrack.h"
+#include "Animation/MovieSceneMarginTrack.h"
 #include "Animation/WidgetAnimation.h"
+#include "Blueprint/WidgetTree.h"
 #include "Channels/MovieSceneChannelEditorData.h"
 #include "Channels/MovieSceneChannelProxy.h"
 #include "Channels/MovieSceneDoubleChannel.h"
@@ -9,9 +12,22 @@
 #include "Curves/RealCurve.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Components/Widget.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "MovieScene.h"
 #include "MovieSceneSection.h"
 #include "MovieSceneTrack.h"
+#include "Tracks/MovieSceneBoolTrack.h"
+#include "Tracks/MovieSceneByteTrack.h"
+#include "Tracks/MovieSceneColorTrack.h"
+#include "Tracks/MovieSceneDoubleTrack.h"
+#include "Tracks/MovieSceneEnumTrack.h"
+#include "Tracks/MovieSceneFloatTrack.h"
+#include "Tracks/MovieSceneIntegerTrack.h"
+#include "Tracks/MovieSceneObjectPropertyTrack.h"
+#include "Tracks/MovieScenePropertyTrack.h"
+#include "Tracks/MovieSceneStringTrack.h"
+#include "Tracks/MovieSceneVectorTrack.h"
 #include "WidgetBlueprint.h"
 
 namespace
@@ -98,6 +114,160 @@ namespace
             Names.Add(Track->GetDisplayName().ToString());
         }
         return FString::Join(Names, TEXT(", "));
+    }
+
+    UWidget* FindWidget(UWidgetBlueprint* WidgetBP, const FString& WidgetName)
+    {
+        UWidget* Found = nullptr;
+        WidgetBP->WidgetTree->ForEachWidget([&Found, &WidgetName](UWidget* Widget)
+        {
+            if (Widget && Widget->GetName() == WidgetName)
+            {
+                Found = Widget;
+            }
+        });
+        return Found;
+    }
+
+    FString DescribeWidgets(UWidgetBlueprint* WidgetBP)
+    {
+        TArray<FString> Names;
+        WidgetBP->WidgetTree->ForEachWidget([&Names](UWidget* Widget)
+        {
+            if (Widget)
+            {
+                Names.Add(Widget->GetName());
+            }
+        });
+        return FString::Join(Names, TEXT(", "));
+    }
+
+    // Same pairing the engine registers its property track editors with: the runtime property registry in
+    // MovieSceneTracksComponentTypes for the generic types, the UMG track editors for Margin and WidgetTransform.
+    UClass* ResolveTrackClass(const FProperty* Property)
+    {
+        if (CastField<FBoolProperty>(Property))
+        {
+            return UMovieSceneBoolTrack::StaticClass();
+        }
+        if (CastField<FByteProperty>(Property))
+        {
+            return UMovieSceneByteTrack::StaticClass();
+        }
+        if (CastField<FEnumProperty>(Property))
+        {
+            return UMovieSceneEnumTrack::StaticClass();
+        }
+        if (CastField<FIntProperty>(Property))
+        {
+            return UMovieSceneIntegerTrack::StaticClass();
+        }
+        if (CastField<FFloatProperty>(Property))
+        {
+            return UMovieSceneFloatTrack::StaticClass();
+        }
+        if (CastField<FDoubleProperty>(Property))
+        {
+            return UMovieSceneDoubleTrack::StaticClass();
+        }
+        if (CastField<FStrProperty>(Property))
+        {
+            return UMovieSceneStringTrack::StaticClass();
+        }
+        if (CastField<FObjectProperty>(Property))
+        {
+            return UMovieSceneObjectPropertyTrack::StaticClass();
+        }
+
+        const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+        if (!StructProperty || !StructProperty->Struct)
+        {
+            return nullptr;
+        }
+
+        const FName StructName = StructProperty->Struct->GetFName();
+        if (StructName == TEXT("WidgetTransform"))
+        {
+            return UMovieScene2DTransformTrack::StaticClass();
+        }
+        if (StructName == TEXT("Margin"))
+        {
+            return UMovieSceneMarginTrack::StaticClass();
+        }
+        if (StructName == TEXT("LinearColor") || StructName == TEXT("Color") || StructName == TEXT("SlateColor"))
+        {
+            return UMovieSceneColorTrack::StaticClass();
+        }
+        if (StructName == TEXT("Vector2D") || StructName == TEXT("Vector2f") || StructName == TEXT("Vector") || StructName == TEXT("Vector3f") || StructName == TEXT("Vector4"))
+        {
+            return UMovieSceneFloatVectorTrack::StaticClass();
+        }
+        return nullptr;
+    }
+
+    int32 VectorChannelCount(const FProperty* Property)
+    {
+        const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+        const FName StructName = StructProperty && StructProperty->Struct ? StructProperty->Struct->GetFName() : NAME_None;
+        if (StructName == TEXT("Vector2D") || StructName == TEXT("Vector2f"))
+        {
+            return 2;
+        }
+        if (StructName == TEXT("Vector4"))
+        {
+            return 4;
+        }
+        return 3;
+    }
+
+    // A path walks struct members, "RenderTransform.Translation" style, and resolves against the last hop.
+    const FProperty* ResolvePropertyPath(const UClass* WidgetClass, const FString& PropertyPath)
+    {
+        TArray<FString> Segments;
+        PropertyPath.ParseIntoArray(Segments, TEXT("."));
+
+        const UStruct* Owner = WidgetClass;
+        const FProperty* Property = nullptr;
+        for (const FString& Segment : Segments)
+        {
+            if (!Owner)
+            {
+                return nullptr;
+            }
+            Property = FindFProperty<FProperty>(Owner, *Segment);
+            if (!Property)
+            {
+                return nullptr;
+            }
+            const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+            Owner = StructProperty ? StructProperty->Struct : nullptr;
+        }
+        return Property;
+    }
+
+    // Possessable plus the UMG side binding the runtime resolves widget names through. Mirrors
+    // UWidgetAnimation::BindPossessableObject, which is what Sequencer ends up calling.
+    FGuid FindOrAddBinding(UWidgetAnimation* Animation, UWidgetBlueprint* WidgetBP, UWidget* Widget, bool bIsRootWidget)
+    {
+        const FName WidgetName = Widget ? Widget->GetFName() : WidgetBP->GetFName();
+        for (const FWidgetAnimationBinding& Binding : Animation->AnimationBindings)
+        {
+            if (Binding.WidgetName == WidgetName && Binding.SlotWidgetName.IsNone())
+            {
+                return Binding.AnimationGuid;
+            }
+        }
+
+        UClass* BoundClass = Widget ? Widget->GetClass() : WidgetBP->GeneratedClass.Get();
+        const FGuid NewGuid = Animation->GetMovieScene()->AddPossessable(WidgetName.ToString(), BoundClass);
+
+        FWidgetAnimationBinding NewBinding;
+        NewBinding.AnimationGuid = NewGuid;
+        NewBinding.WidgetName = WidgetName;
+        NewBinding.bIsRootWidget = bIsRootWidget;
+        Animation->AnimationBindings.Add(NewBinding);
+
+        return NewGuid;
     }
 
     FString DescribeChannels(const FMovieSceneChannelProxy& Proxy)
@@ -202,25 +372,352 @@ namespace
                     return false;
                 }
 
-                if (Op != TEXT("SetKeys"))
-                {
-                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown animation Op '%s'. Accepted: SetKeys"), *Context.AssetPath, *Op);
-                    return false;
-                }
-
                 UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("  %s: animation %s %s"), *WidgetBP->GetName(), *Op, *AnimationName);
                 ++Context.Ops;
 
-                if (!ApplySetKeys(Context, WidgetBP, AnimationName, Desc))
+                bool bOk = false;
+                if (Op == TEXT("SetKeys"))
+                {
+                    bOk = ApplySetKeys(Context, WidgetBP, AnimationName, Desc);
+                }
+                else if (Op == TEXT("Add"))
+                {
+                    bOk = ApplyAdd(Context, WidgetBP, AnimationName, Desc);
+                }
+                else if (Op == TEXT("Delete"))
+                {
+                    bOk = ApplyDelete(Context, WidgetBP, AnimationName);
+                }
+                else if (Op == TEXT("Rename"))
+                {
+                    bOk = ApplyRename(Context, WidgetBP, AnimationName, Desc);
+                }
+                else if (Op == TEXT("SetPlaybackRange"))
+                {
+                    bOk = ApplySetPlaybackRange(Context, WidgetBP, AnimationName, Desc);
+                }
+                else if (Op == TEXT("AddTrack"))
+                {
+                    bOk = ApplyAddTrack(Context, WidgetBP, AnimationName, Desc);
+                }
+                else if (Op == TEXT("DeleteTrack"))
+                {
+                    bOk = ApplyDeleteTrack(Context, WidgetBP, AnimationName, Desc);
+                }
+                else
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown animation Op '%s'. Accepted: Add, Delete, Rename, SetPlaybackRange, AddTrack, DeleteTrack, SetKeys"), *Context.AssetPath, *Op);
+                    return false;
+                }
+
+                if (!bOk)
                 {
                     return false;
                 }
+
+                // Animations are Blueprint variables, so every structural change goes back through the compiler.
+                Context.bNeedsStructuralRecompile = true;
             }
 
             return true;
         }
 
     private:
+        // Same construction order the editor's New Animation button uses: object, movie scene, display rate,
+        // playback range, then registration as a Blueprint variable.
+        bool ApplyAdd(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            if (FindAnimation(WidgetBP, AnimationName))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation '%s' already exists"), *Context.AssetPath, *AnimationName);
+                return false;
+            }
+
+            double StartTime = 0.0;
+            double EndTime = 5.0;
+            Desc->TryGetNumberField(TEXT("StartTime"), StartTime);
+            Desc->TryGetNumberField(TEXT("EndTime"), EndTime);
+
+            int32 DisplayRate = 20;
+            Desc->TryGetNumberField(TEXT("DisplayRate"), DisplayRate);
+            if (DisplayRate <= 0)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: DisplayRate must be positive, got %d"), *Context.AssetPath, DisplayRate);
+                return false;
+            }
+
+            WidgetBP->Modify();
+
+            UWidgetAnimation* Animation = NewObject<UWidgetAnimation>(WidgetBP, FName(), RF_Transactional);
+            Animation->SetDisplayLabel(AnimationName);
+            Animation->Rename(*AnimationName);
+
+            Animation->MovieScene = NewObject<UMovieScene>(Animation, FName(*AnimationName), RF_Transactional);
+            Animation->MovieScene->SetDisplayRate(FFrameRate(DisplayRate, 1));
+
+            const FFrameRate TickResolution = Animation->MovieScene->GetTickResolution();
+            const FFrameNumber StartFrame = TickResolution.AsFrameNumber(StartTime);
+            const FFrameNumber EndFrame = TickResolution.AsFrameNumber(EndTime);
+            Animation->MovieScene->SetPlaybackRange(TRange<FFrameNumber>(StartFrame, EndFrame + 1));
+            Animation->MovieScene->GetEditorData().WorkStart = StartTime;
+            Animation->MovieScene->GetEditorData().WorkEnd = EndTime;
+
+            WidgetBP->Animations.Add(Animation);
+            WidgetBP->OnVariableAdded(Animation->GetFName());
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    added animation '%s' (%g to %gs at %dfps)"), *AnimationName, StartTime, EndTime, DisplayRate);
+            return true;
+        }
+
+        bool ApplyDelete(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            const FName RemovedName = Animation->GetFName();
+            WidgetBP->Modify();
+            WidgetBP->Animations.Remove(Animation);
+            WidgetBP->OnVariableRemoved(RemovedName);
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    deleted animation '%s'"), *AnimationName);
+            return true;
+        }
+
+        // The display label is what the editor lists, the object name is what a Blueprint graph references,
+        // so both move and variable references follow.
+        bool ApplyRename(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            FString NewName;
+            if (!Desc->TryGetStringField(TEXT("NewName"), NewName) || NewName.IsEmpty())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation Rename needs a NewName"), *Context.AssetPath);
+                return false;
+            }
+
+            if (FindAnimation(WidgetBP, NewName))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation '%s' already exists"), *Context.AssetPath, *NewName);
+                return false;
+            }
+
+            const FName OldFName = Animation->GetFName();
+            const FName NewFName(*NewName);
+
+            WidgetBP->Modify();
+            Animation->Modify();
+            Animation->GetMovieScene()->Modify();
+
+            Animation->SetDisplayLabel(NewName);
+            Animation->Rename(*NewName);
+            Animation->GetMovieScene()->Rename(*NewName);
+            WidgetBP->OnVariableRenamed(OldFName, NewFName);
+            FBlueprintEditorUtils::ReplaceVariableReferences(WidgetBP, OldFName, NewFName);
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    renamed animation '%s' to '%s'"), *AnimationName, *NewName);
+            return true;
+        }
+
+        bool ApplySetPlaybackRange(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation || !Animation->GetMovieScene())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            double StartTime = 0.0;
+            double EndTime = 0.0;
+            if (!Desc->TryGetNumberField(TEXT("StartTime"), StartTime) || !Desc->TryGetNumberField(TEXT("EndTime"), EndTime))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation SetPlaybackRange needs StartTime and EndTime"), *Context.AssetPath);
+                return false;
+            }
+            if (EndTime <= StartTime)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: EndTime %g must be greater than StartTime %g"), *Context.AssetPath, EndTime, StartTime);
+                return false;
+            }
+
+            UMovieScene* MovieScene = Animation->GetMovieScene();
+            MovieScene->Modify();
+
+            const FFrameRate TickResolution = MovieScene->GetTickResolution();
+            MovieScene->SetPlaybackRange(TRange<FFrameNumber>(TickResolution.AsFrameNumber(StartTime), TickResolution.AsFrameNumber(EndTime) + 1));
+            MovieScene->GetEditorData().WorkStart = StartTime;
+            MovieScene->GetEditorData().WorkEnd = EndTime;
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    set '%s' playback range to %g - %gs"), *AnimationName, StartTime, EndTime);
+            return true;
+        }
+
+        bool ApplyAddTrack(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation || !Animation->GetMovieScene())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            FString BoundWidget;
+            FString PropertyPath;
+            if (!Desc->TryGetStringField(TEXT("BoundWidget"), BoundWidget) || !Desc->TryGetStringField(TEXT("PropertyPath"), PropertyPath))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation AddTrack needs BoundWidget and PropertyPath"), *Context.AssetPath);
+                return false;
+            }
+
+            // The root widget binds as the user widget itself, every other name resolves in the widget tree.
+            const bool bIsRootWidget = BoundWidget == WidgetBP->GetName();
+            UWidget* Widget = bIsRootWidget ? nullptr : FindWidget(WidgetBP, BoundWidget);
+            if (!bIsRootWidget && !Widget)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no widget named '%s'. Asset has: %s"), *Context.AssetPath, *BoundWidget, *DescribeWidgets(WidgetBP));
+                return false;
+            }
+
+            const UClass* WidgetClass = Widget ? Widget->GetClass() : WidgetBP->GeneratedClass.Get();
+            const FProperty* Property = ResolvePropertyPath(WidgetClass, PropertyPath);
+            if (!Property)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' has no property at path '%s'"), *Context.AssetPath, *BoundWidget, *PropertyPath);
+                return false;
+            }
+
+            UClass* TrackClass = ResolveTrackClass(Property);
+            if (!TrackClass)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: property '%s' is a %s, which no animation track covers"), *Context.AssetPath, *PropertyPath, *Property->GetClass()->GetName());
+                return false;
+            }
+
+            UMovieScene* MovieScene = Animation->GetMovieScene();
+            Animation->Modify();
+            MovieScene->Modify();
+
+            const FGuid ObjectGuid = FindOrAddBinding(Animation, WidgetBP, Widget, bIsRootWidget);
+
+            // A second track for the same property would keep the first one's keys and silently lose to it.
+            for (const FMovieSceneBinding& Binding : MovieScene->GetBindings())
+            {
+                if (Binding.GetObjectGuid() != ObjectGuid)
+                {
+                    continue;
+                }
+                for (const UMovieSceneTrack* Existing : Binding.GetTracks())
+                {
+                    const UMovieScenePropertyTrack* PropertyTrack = Cast<UMovieScenePropertyTrack>(Existing);
+                    if (PropertyTrack && PropertyTrack->GetPropertyPath().ToString() == PropertyPath)
+                    {
+                        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' already animates '%s' on '%s'"), *Context.AssetPath, *AnimationName, *PropertyPath, *BoundWidget);
+                        return false;
+                    }
+                }
+            }
+
+            UMovieSceneTrack* Track = MovieScene->AddTrack(TrackClass, ObjectGuid);
+            if (!Track)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: movie scene refused a %s for '%s'"), *Context.AssetPath, *TrackClass->GetName(), *BoundWidget);
+                return false;
+            }
+
+            UMovieScenePropertyTrack* PropertyTrack = CastChecked<UMovieScenePropertyTrack>(Track);
+            PropertyTrack->SetPropertyNameAndPath(Property->GetFName(), PropertyPath);
+
+            // Default display name is the raw property name. The timeline shows the spaced form, and that is
+            // what an exported TrackName carries, so a spec written off an export resolves either way.
+            PropertyTrack->SetDisplayName(FText::FromString(FName::NameToDisplayString(Property->GetName(), false)));
+
+            if (UMovieSceneFloatVectorTrack* VectorTrack = Cast<UMovieSceneFloatVectorTrack>(Track))
+            {
+                VectorTrack->SetNumChannelsUsed(VectorChannelCount(Property));
+            }
+
+            // Sections carry the keys, and a track without one cannot be keyed at all.
+            UMovieSceneSection* NewSection = PropertyTrack->CreateNewSection();
+            NewSection->SetRange(MovieScene->GetPlaybackRange());
+            PropertyTrack->AddSection(*NewSection);
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    added %s on '%s' for '%s'"), *TrackClass->GetName(), *BoundWidget, *PropertyPath);
+            return true;
+        }
+
+        bool ApplyDeleteTrack(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation || !Animation->GetMovieScene())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            FString BoundWidget;
+            if (!Desc->TryGetStringField(TEXT("BoundWidget"), BoundWidget))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation DeleteTrack needs BoundWidget"), *Context.AssetPath);
+                return false;
+            }
+
+            TArray<UMovieSceneTrack*> Tracks;
+            CollectTracksForWidget(Animation, BoundWidget, Tracks);
+            if (Tracks.Num() == 0)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' has no track bound to '%s'"), *Context.AssetPath, *AnimationName, *BoundWidget);
+                return false;
+            }
+
+            FString PropertyPath;
+            if (Desc->TryGetStringField(TEXT("PropertyPath"), PropertyPath))
+            {
+                Tracks.RemoveAll([&PropertyPath](const UMovieSceneTrack* Track)
+                {
+                    const UMovieScenePropertyTrack* PropertyTrack = Cast<UMovieScenePropertyTrack>(Track);
+                    return !PropertyTrack || PropertyTrack->GetPropertyPath().ToString() != PropertyPath;
+                });
+            }
+
+            FString TrackName;
+            if (Desc->TryGetStringField(TEXT("TrackName"), TrackName))
+            {
+                Tracks.RemoveAll([&TrackName](const UMovieSceneTrack* Track)
+                {
+                    return Track->GetDisplayName().ToString() != TrackName;
+                });
+            }
+
+            if (Tracks.Num() != 1)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' on '%s' matches %d tracks, name one with PropertyPath or TrackName. Candidates: %s"), *Context.AssetPath, *AnimationName, *BoundWidget, Tracks.Num(), *DescribeTracks(Tracks));
+                return false;
+            }
+
+            UMovieScene* MovieScene = Animation->GetMovieScene();
+            MovieScene->Modify();
+
+            const FString RemovedName = Tracks[0]->GetDisplayName().ToString();
+            if (!MovieScene->RemoveTrack(*Tracks[0]))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: movie scene refused to remove track '%s'"), *Context.AssetPath, *RemovedName);
+                return false;
+            }
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    deleted track '%s' on '%s'"), *RemovedName, *BoundWidget);
+            return true;
+        }
+
         bool ApplySetKeys(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
         {
             UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
@@ -247,6 +744,16 @@ namespace
                 return false;
             }
 
+            FString PropertyPath;
+            if (Desc->TryGetStringField(TEXT("PropertyPath"), PropertyPath))
+            {
+                Tracks.RemoveAll([&PropertyPath](const UMovieSceneTrack* Track)
+                {
+                    const UMovieScenePropertyTrack* PropertyTrack = Cast<UMovieScenePropertyTrack>(Track);
+                    return !PropertyTrack || PropertyTrack->GetPropertyPath().ToString() != PropertyPath;
+                });
+            }
+
             FString TrackName;
             if (Desc->TryGetStringField(TEXT("TrackName"), TrackName))
             {
@@ -258,7 +765,7 @@ namespace
 
             if (Tracks.Num() != 1)
             {
-                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' on '%s' matches %d tracks, name one with TrackName. Candidates: %s"), *Context.AssetPath, *AnimationName, *BoundWidget, Tracks.Num(), *DescribeTracks(Tracks));
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' on '%s' matches %d tracks, name one with PropertyPath or TrackName. Candidates: %s"), *Context.AssetPath, *AnimationName, *BoundWidget, Tracks.Num(), *DescribeTracks(Tracks));
                 return false;
             }
 

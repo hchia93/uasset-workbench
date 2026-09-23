@@ -24,11 +24,11 @@
 
 | 组 | 做什么 | 产出 | 数量 |
 | --- | --- | --- | --- |
-| Export | 读 uasset 结构导出 JSON | `Intermediate/UAssetExport` 下的 JSON | 11 |
+| Export | 读 uasset 结构导出 JSON | `Intermediate/UAssetExport` 下的 JSON | 13 |
 | Import | 读 JSON spec 写回或创建 uasset | 被修改或新建的 uasset | 3 |
-| Edit | 按意图修改既有 uasset | 被修改的 uasset | 5 |
+| Edit | 按意图修改既有 uasset | 被修改的 uasset | 6 |
 | Migrate | C++ 或资产改名后修复引用 | 被修改的 uasset | 8 |
-| Audit | 只读检查产出报告 | 报告 JSON | 4 |
+| Audit | 只读检查产出报告 | 报告 JSON | 5 |
 
 组别由 run 名决定: 后缀 `Export` 是 Export 组，后缀 `Import` 与前缀 `Create` 是 Import 组，前缀 `Edit` 是 Edit 组，前缀 `Audit` 是 Audit 组，其余是 Migrate 组。命名上 `Import` 与 `Export` 是名词做后缀，其余动词在前。
 
@@ -127,13 +127,13 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 ## 各组详解
 
 <details>
-<summary><b>Export</b>，11 个 commandlet</summary>
+<summary><b>Export</b>，13 个 commandlet</summary>
 
 | RunName | 导出内容 |
 | --- | --- |
 | `BlueprintEdGraphExport` | Blueprint 图、节点、pin、连线、函数签名、变量、事件分发器、timeline、组件、引用资产 |
 | `AnimAssetExport` | AnimSequence 与 AnimMontage 的 notify、曲线、轨道名、root motion，sequence 另有 sync marker，montage 另有 section 与 slot |
-| `WidgetLayoutExport` | Widget 树、slot 布局属性、子类属性、动画关键帧、EdGraph |
+| `WidgetLayoutExport` | Widget 树、slot 布局属性、子类属性、动画及其绑定、轨道、属性路径与关键帧、EdGraph |
 | `DataAssetExport` | DataAsset 子类的全部自定义属性，数组元素展开 |
 | `DataTableExport` | DataTable 行结构名与全部行数据，按 RowName 索引 |
 | `NiagaraSystemExport` | Niagara emitter 列表、spawn/update script 参数、renderer 属性 |
@@ -142,6 +142,8 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 | `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key |
 | `AnimBlueprintExport` | AnimBP EdGraph、状态机的状态、转换、blend 设置、入口状态、事件绑定 |
 | `LevelExport` | Level 的 actor / component、与 archetype 的差异属性、碰撞与静态网格与 ISM 摘要、streaming level |
+| `PCGGraphExport` | PCG graph 的节点、pin、边、每个节点相对类默认值的设定差异、图参数、子图引用与注释，graph instance 另导出它的参数覆写 |
+| `PCGCatalogExport` | 可用 PCG 节点类的字典，带各自的 pin 表与属性表，以及扫描路径下找到的图、settings 资产、Blueprint element 与 data asset |
 
 输出: `Intermediate/UAssetExport/<AssetPath>_r<revision>_<YYYYMMDD-HHMMSS>.json`，不入版本控制。
 
@@ -165,7 +167,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +197,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +245,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +286,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +318,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +345,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +397,7 @@ MaterialInstance 导出参数覆写表。
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +447,7 @@ ISM / HISM / Foliage 组件的实例数超过 200 时只导出数量、包围盒
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -609,7 +611,7 @@ spec 顶层字段。
 </details>
 
 <details>
-<summary><b>Edit</b>，5 个 commandlet</summary>
+<summary><b>Edit</b>，6 个 commandlet</summary>
 
 Import 是照 spec 重新生成一份资产，Edit 是改动既有的那一份，一个面配一个 writer。这里是插件做得最多的地方，也是 agent 能交回一个改动而不是一段说明的地方。
 
@@ -620,6 +622,7 @@ Import 是照 spec 重新生成一份资产，Edit 是改动既有的那一份�
 | `EditTextureAsset` | Texture2D 的构建设置 | dry run |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 | dry run |
 | `EditDataTable` | DataTable 既有行的属性值 | dry run |
+| `EditPCGGraph` | 增删 PCG 节点、连边与断边、写节点设定、管理图参数与图级设置、自动排版 | dry run |
 
 dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑一遍，只跳过保存，所以 dry run 干净就是 spec 真的校验过了。改动随进程退出丢弃。
 
@@ -631,7 +634,7 @@ dry run 不是预览。不给 `-apply` 时每个 writer 照样对真实资产跑
 | --- | --- | --- |
 | `Components` | `ComponentsMode` | SimpleConstructionScript 组件树 |
 | `Widgets` | `DesignerMode` | WidgetBlueprint 的控件树，增删改挪与控件或 slot 属性 |
-| `WidgetAnimations` | `DesignerMode` | WidgetBlueprint 的动画曲线，改既有通道的 key |
+| `WidgetAnimations` | `DesignerMode` | WidgetBlueprint 的动画，建与删一条动画、加属性轨道、播放区间、改名、关键帧 |
 | `Variables` | `MyBlueprintMode` | 成员变量，`Modify` 能给既有变量重定类型 |
 | `Defaults` | `DefaultsMode` | CDO 与组件模板的属性值，覆盖父 BP 继承来的组件 |
 | `Functions` | `MyBlueprintMode` | 函数图、签名、局部变量、access 与 flag |
@@ -652,7 +655,7 @@ Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions 
 | 面 | 能到哪 |
 | --- | --- |
 | `Widgets` | `Add` / `Delete` / `Reparent` / `Rename` / `Modify`。不整树 Import 也能改结构。换父级不换控件对象，GUID、动画绑定、图里的引用都跟着走。面板还挂着子控件时 `Delete` 默认拒绝，要连子树删才给 `Recursive` |
-| `WidgetAnimations` | `SetKeys` 整条通道替换 key，按动画名、绑定控件、轨道与通道 meta 名寻址。字段名与 `WidgetLayoutExport` 打印的一致。只改 key，轨道和通道要先在编辑器里建 |
+| `WidgetAnimations` | 动画上的 `Add` / `Remove` / `Rename` / `SetPlaybackRange`，绑定属性上的 `AddTrack` / `RemoveTrack`，`SetKeys` 整条通道替换 key。按动画名、绑定控件、轨道与通道 meta 名寻址，字段名与 `WidgetLayoutExport` 打印的一致。一条动画能从零建起，不必先过一遍编辑器 |
 | `Graph` 节点 | 25 种节点类型，从 `CallFunction`、`Branch` 到 `DynamicCast`、`MakeStruct` / `BreakStruct`、四种 `Switch`、`SpawnActor`、`Timeline`、`MathExpression` 与 `AnimGetter`。`Type` 以 `/` 开头当类路径解析，anim graph 节点走这条。表外的 `Type` 去 StandardMacros 里按图名查，所以 `Gate` 与 `DoOnce` 直接写就行 |
 | `Graph` 的 `Bind` | anim 节点的 property access 绑定，就是 Details 面板那个 Bind 下拉框。指向一条 transition 的 Id 就绑到它的 result 上 |
 | `Graph` 的 `ExposePins` | 露出或收起 anim 节点某个属性的 pin，按属性名寻址而不是数组下标 |
@@ -713,7 +716,7 @@ CoreRedirects 只覆盖调用侧，Blueprint 图里的实现侧与消费侧不�
 </details>
 
 <details>
-<summary><b>Audit</b>，4 个 commandlet 与 3 个脚本</summary>
+<summary><b>Audit</b>，5 个 commandlet 与 3 个脚本</summary>
 
 | RunName | 检查什么 |
 | --- | --- |
@@ -721,8 +724,9 @@ CoreRedirects 只覆盖调用侧，Blueprint 图里的实现侧与消费侧不�
 | `AuditLevelTopology` | level 之间的 streaming 关系，谁是 persistent，谁是 sublevel |
 | `AuditTexture` | 贴图的构建设置与它实际被怎么采样是否对得上，规则 T1 到 T15 |
 | `AuditMaterial` | Nanite 兼容与 usage flag 是否对得上实际挂载，规则 N1 到 N9 与 U1 到 U4 |
+| `AuditPCG` | PCG graph 的静态检查: 必连 pin 没接、孤立节点、被 bypass 的节点、子图缺失或递归、图参数没人读、spawner 没有可生成的东西、hierarchical 生成设置自相矛盾，以及 level 上 PCG 组件的配置 |
 
-四个都只读，不保存任何包。退出码 3 表示运行成功且报告里有东西要处理，提交 gate 就看这个。
+五个都只读，不保存任何包。退出码 3 表示运行成功且报告里有东西要处理，提交 gate 就看这个。
 
 **AuditLevelReference** 走 Asset Registry 的依赖图逐个判断包是否存在，不 load world。包是否存在按已挂载的 content root 解析，所以跑之前必须让项目的插件全部启用，否则未挂载 root 下的依赖会被判成假破损。它的配对操作是 Migrate 组的 `SanitizeLevelReference`，audit 找出破损，sanitize 修。
 
@@ -768,6 +772,22 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 </details>
 
+## 2.6 新增
+
+### PCG
+
+四个 commandlet 让 PCG graph 可读、可查、可改、可审计。PCG graph 不是 EdGraph，它自己持有节点、pin 与边，编辑器里的图只是打开窗口时建的镜像，所以这套东西直接读写运行时模型，不需要编辑器 UI。节点按 object name 寻址，节点设定走反射，导出默认只给相对类默认值的差异。
+
+建新图的方式是用 `CreateAsset` 建一个空的 `PCGGraph`，再用 `EditPCGGraph` 填，不另开一条 Import 通道。
+
+边界: 不触发 PCG 生成，所以节点在生成期报的 error 与 warning 拿不到。
+
+### Widget animation
+
+`WidgetLayoutExport` 导出动画的绑定、轨道、属性路径与关键帧，`EditBlueprint` 的 `WidgetAnimations` 能从零建一条动画、加属性轨道、打关键帧、改播放区间、改名、删轨道与删动画。
+
+轨道类由属性类型决定，映射与引擎给 Sequencer 注册的那张表同源，涵盖 bool、数值、字符串、对象引用、颜色、向量，以及 UMG 专有的 `FWidgetTransform` 与 `FMargin`。建轨道时连带建一个覆盖播放区间的 section，建完就能直接打点。
+
 ## 读取策略
 
 导出的 JSON 可能非常大，一个中等复杂度的 Blueprint 就能到几千行。
@@ -809,11 +829,11 @@ workbench 走 commandlet 加引擎稳定 API，绕开正在演进的那一层。
 | 文档 | 内容 |
 | --- | --- |
 | `Docs/AI-Guide.md` | 给 AI agent 的调用手册，覆盖全部能力的决策表加调用模板加常见坑 |
-| `Docs/Export.md` | Export 组，11 个 commandlet，每个 JSON 字段 |
+| `Docs/Export.md` | Export 组，13 个 commandlet，每个 JSON 字段 |
 | `Docs/Import.md` | Import 组，3 个 commandlet，spec 格式 |
-| `Docs/Edit.md` | Edit 组，5 个 commandlet，每个 spec key 与每个 layout op |
+| `Docs/Edit.md` | Edit 组，6 个 commandlet，每个 spec key 与每个 layout op |
 | `Docs/Migrate.md` | Migrate 组，8 个 commandlet |
-| `Docs/Audit.md` | Audit 组，4 个 commandlet，完整规则表与 stream metric 工作流 |
+| `Docs/Audit.md` | Audit 组，5 个 commandlet，完整规则表与 stream metric 工作流 |
 
 这些文档是给 agent 读的参考。调用行为与文档描述不符时以源码为准，每个 commandlet header 顶部的块注释写了完整契约。
 
@@ -829,7 +849,7 @@ UE 只是验证场，三样可复用的东西不依赖它。
 
 ## 版本
 
-当前版本: **2.5.4**
+当前版本: **2.6.1**
 
 定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`，同时嵌进每份导出 JSON 的 `ExporterVersion` 字段。
 

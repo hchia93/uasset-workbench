@@ -19,10 +19,13 @@
 | 看材质表达式或 MI 的参数覆写 | `MaterialExport` | Export |
 | 看 Niagara 的 emitter、script、renderer | `NiagaraSystemExport` | Export |
 | 看贴图的压缩、sRGB、LOD group、源尺寸 | `TextureExport` | Export |
+| 看 PCG graph 的节点、连线、参数、子图 | `PCGGraphExport` | Export |
+| 想知道 PCG 有哪些节点可用，某节点有哪些 pin 与属性 | `PCGCatalogExport`，必给 `-filter=` | Export |
 | 用代码搭 Widget 布局，或按 spec 重建控件树 | `WidgetLayoutImport` | Import |
 | 设 widget 上 `EditDefaultsOnly` 的属性，那些不在控件树里 | `WidgetLayoutImport` 的 `ClassDefaults` | Import |
 | 批量填 DataAsset 的属性 | `DataAssetImport` | Import |
 | 从零建一批资产，并让它们互相接线 | `CreateAsset` | Import |
+| 从零建一张 PCG graph | 先 `CreateAsset` 建空 `/Script/PCG.PCGGraph`，再 `EditPCGGraph` 填 | Import + Edit |
 | 给既有 BP 加组件、加变量、建节点接线、设默认值 | `EditBlueprint` | Edit |
 | 一次改完同一个 BP 的多个方面，要么全成要么不落盘 | `EditBlueprint` | Edit |
 | 生成完的图要排版，不想手写坐标 | `EditBlueprint` 的 `Layout` `Arrange` | Edit |
@@ -45,7 +48,9 @@
 | 改 UMG 控件或它 slot 的属性，不想整树替换 | `EditBlueprint` 的 `Widgets` | Edit |
 | 往控件树里加、删、挪一个控件，不想整树替换 | `EditBlueprint` 的 `Widgets` 的 `Add` / `Delete` / `Reparent` | Edit |
 | 拆掉一个只包着单个子控件的容器 | `EditBlueprint` 的 `Widgets`，`Reparent` 子控件再 `Delete` 容器 | Edit |
-| 改 widget animation 的关键帧数值或时间 | `EditBlueprint` 的 `WidgetAnimations` | Edit |
+| 改 widget animation 的关键帧数值或时间 | `EditBlueprint` 的 `WidgetAnimations` 的 `SetKeys` | Edit |
+| 从零给 widget 建一条动画，或删掉一条 | `EditBlueprint` 的 `WidgetAnimations` 的 `Add` / `Delete` | Edit |
+| 给动画加一条属性轨道，比如让某个控件的 RenderOpacity 能动 | `EditBlueprint` 的 `WidgetAnimations` 的 `AddTrack` | Edit |
 | 给 AnimSequence / AnimMontage 加 notify，或改既有 notify 的时间、轨道、参数 | `EditAnimAsset` 的 `Notifies` | Edit |
 | 把 `AnimAssetExport` 导出的 notify 参数改完喂回资产 | `EditAnimAsset` | Edit |
 | 改 AnimSequence 的曲线关键帧或 sync marker | `EditAnimAsset` 的 `Curves` / `SyncMarkers` | Edit |
@@ -53,6 +58,7 @@
 | 改贴图的 LOD group、压缩格式、sRGB、mip、尺寸上限 | `EditTextureAsset` | Edit |
 | 改材质的 usage flag、BlendMode、ShadingModel，或 MI 的 parent 与参数覆写 | `EditMaterialAsset` | Edit |
 | 改 DataTable 既有行的属性值 | `EditDataTable` | Edit |
+| 给 PCG graph 加删节点、接断连线、改节点属性、改图参数、排版 | `EditPCGGraph` | Edit |
 | C++ 改名后 BP 事件不再触发 | `RedirectBlueprintEvent` | Migrate |
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
 | 图逻辑搬进 C++ 后，BP 图里作废的那几个节点要删掉 | `DeleteBlueprintNode` | Migrate |
@@ -66,6 +72,7 @@
 | 想知道哪个 level 是 persistent，哪些是 sublevel | `AuditLevelTopology` | Audit |
 | 想知道哪些贴图的压缩 / sRGB / group / 尺寸设错了 | `AuditTexture` | Audit |
 | 想知道哪些材质缺 usage flag、跟 Nanite 不兼容，或者哪个材质会拖慢 PIE 进入 | `AuditMaterial` | Audit |
+| 想知道 PCG graph 有没有没接的必需 pin、孤立节点、空子图、没人读的参数，或关卡上的 PCGComponent 配置有没有问题 | `AuditPCG` | Audit |
 | 想测每个 sublevel 的加载卸载耗时 | `run_stream_metric.ps1` | 脚本 |
 | 想看每个 level 的组件数是否超预算 | 先 `LevelExport`，再 `level_budget_audit.py` | Export + 脚本 |
 | 想改 `CreateDefaultSubobject` 的名字，不想让派生 BP 留下孤儿组件 | 先 `rename_default_subobject.py`，再改 C++ | 脚本 |
@@ -87,6 +94,8 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     BlueprintEdGraphExport \
     "/Game/Blueprints/BP_Foo,/Game/Blueprints/BP_Baz"
 ```
+
+`PCGCatalogExport` 不吃 `AssetList`，位置参数留空串，`-filter=` 走 `EXTRA_ARGS`。
 
 Import。三个 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串。
 
@@ -200,7 +209,9 @@ Audit。
 | 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
 | `WidgetLayoutImport` 退出码 1 但资产其实写进去了 | 引擎会改写 commandlet 的退出码。判断成败以日志里的 `Imported layout into ...` 为准，别只看退出码 |
 | 以为 `Delete` 一个面板只删它自己 | 面板还挂着子控件时默认拒绝并报出子控件名。确实要连子树一起删才加 `Recursive` |
-| 想用 `WidgetAnimations` 建一条新轨道 | 它只改既有通道的 key，轨道和通道要先在编辑器的动画时间轴上建出来 |
+| 不知道 `AddTrack` 的 `PropertyPath` 填什么 | 先 `WidgetLayoutExport`，`Tracks[].PropertyPath` 原样抄。没有现成轨道时填属性名，嵌套属性用点号 |
+| `SetKeys` 的 `Channel` 填了轨道名 | 单通道轨道的通道名是 `None`，不是轨道名。多通道的形如 `Translation.X`，一律以导出里的 `Channels[].Name` 为准 |
+| 给同一个控件的同一个属性建两条轨道 | 会被拒绝。后建的轨道在运行时赢不过先建的，只会让导出多出一条看不出差别的轨道 |
 | `CreateAsset` 漏了 `-unattended` | 引擎的 `FMessageDialog` 不检查 commandlet 模式，某些创建路径会弹窗把进程挂住。这个参数必填 |
 | `CreateAsset` 建 Texture2D 拿到空结果 | 静默失败，先查 `FactoryProperties` 有没有给 `Width` / `Height`，且必须是 2 的幂 |
 | 想改材质的节点图，或增删 DataTable 的行 | 走 Python 更合适。`unreal.MaterialEditingLibrary` 与 `unreal.DataTableFunctionLibrary` 都有完整的脚本接口，后者的 `export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip。改既有行的属性值不在此列，走 `EditDataTable` |
@@ -214,3 +225,11 @@ Audit。
 | `AuditMaterial` 加了 `-stats` 跑到天亮 | 二档逐材质编译代表性 shader，一个材质几十秒到几分钟。扫描模式已经压到前 20 个，仍然慢。只要某几个材质的数字就把它们写进 `-assets=`，点名的不受上限管；只要规则不要数字就别加 `-stats` |
 | `AuditMaterial` 报出成片的 U3 | U3 是「flag 开着但扫描范围里没找到消费者」，缩小的扫描范围本身就会造出一批。先把范围放到 `/Game` 再看，U3 不进 `Spec`，也不会被 `EditMaterialAsset` 自动关掉 |
 | `level_budget_audit.py` 结论对不上现状 | 它只读 `LevelExport` 的产物，产物过期就得到过期结论。脚本会打印导出日期，先看那个 |
+| `PCGCatalogExport` 不带 `-filter=` | 全量几百个节点类刷爆上下文，先按类名或分类过滤 |
+| 把 PCG 的 `NodeId` 当 guid | 它是 object name，复制粘贴出来的节点会换名，改图前先重导一次 |
+| `PCGGraphExport` 的 `Settings` 看不到全部字段 | 默认只出相对 CDO 的 delta，全量加 `-full` |
+| 改完 PCG graph 已打开的编辑器窗口不刷新 | 保存前已广播结构变更，仍不刷新就关掉重开那张图 |
+| 编辑器开着时批量改 PCG graph | 改动会 dirty 每个引用它的 PCGComponent，`bRegenerateInEditor` 开着会逐个重生成 |
+| 想拿 PCG 节点的 error / warning | 生成期产物，静态导出与审计都拿不到 |
+| `EditPCGGraph` 的 `Properties` 指到 `SettingsInstance` 节点 | 会被拒绝，那是共享的 settings 资产 |
+| `AuditPCG` 既不给 `-withlevels` 也不给 `-levels=` | 只扫 graph，关卡上的 PCGComponent 不查 |

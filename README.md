@@ -24,11 +24,11 @@ Five problems, five capability groups.
 
 | Group | What it does | Output | Count |
 | --- | --- | --- | --- |
-| Export | Read uasset structure, write JSON | JSON under `Intermediate/UAssetExport` | 11 |
+| Export | Read uasset structure, write JSON | JSON under `Intermediate/UAssetExport` | 13 |
 | Import | Read a JSON spec, write back to or create uassets | modified or new uassets | 3 |
-| Edit | Change an existing uasset to match an intent | modified uassets | 5 |
+| Edit | Change an existing uasset to match an intent | modified uassets | 6 |
 | Migrate | Fix references after a C++ or asset rename | modified uassets | 8 |
-| Audit | Read-only checks producing a report | report JSON | 4 |
+| Audit | Read-only checks producing a report | report JSON | 5 |
 
 The group is decided by the run name: suffix `Export` is the Export group, suffix `Import` and prefix `Create` are the Import group, prefix `Edit` is the Edit group, prefix `Audit` is the Audit group, everything else is Migrate. Naming-wise `Import` and `Export` are nouns used as suffixes, every other verb leads.
 
@@ -127,13 +127,13 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 ## Groups in detail
 
 <details>
-<summary><b>Export</b>, 11 commandlets</summary>
+<summary><b>Export</b>, 13 commandlets</summary>
 
 | RunName | What it exports |
 | --- | --- |
 | `BlueprintEdGraphExport` | Blueprint graphs, nodes, pins, connections, function signatures, variables, dispatchers, timelines, components, referenced assets |
 | `AnimAssetExport` | AnimSequence and AnimMontage notifies, curves, track names, root motion, sync markers on a sequence, sections and slots on a montage |
-| `WidgetLayoutExport` | Widget tree, slot layout properties, subclass properties, animation keyframes, EdGraph |
+| `WidgetLayoutExport` | Widget tree, slot layout properties, subclass properties, animations with bindings, tracks, property paths and keyframes, EdGraph |
 | `DataAssetExport` | All custom properties of DataAsset subclasses, array elements expanded |
 | `DataTableExport` | DataTable row struct name and all row data, indexed by RowName |
 | `NiagaraSystemExport` | Niagara emitter list, spawn/update script parameters, renderer properties |
@@ -142,6 +142,8 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 | `BehaviorTreeExport` | BT tree structure, node parameters, Blackboard keys |
 | `AnimBlueprintExport` | AnimBP EdGraph, state machines, states, transitions, blend settings, entry state, event bindings |
 | `LevelExport` | Level actors / components, delta-from-archetype properties, collision / static mesh / ISM summary, streaming levels |
+| `PCGGraphExport` | PCG graph nodes, pins, edges, per-node settings deltas, graph parameters, subgraph references and comments; a graph instance exports its parameter overrides |
+| `PCGCatalogExport` | The dictionary of available PCG node classes with their pin and property tables, plus the graphs, settings assets, Blueprint elements and data assets found under the scanned path |
 
 Output: `Intermediate/UAssetExport/<AssetPath>_r<revision>_<YYYYMMDD-HHMMSS>.json`, out of version control.
 
@@ -165,7 +167,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -195,7 +197,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -243,7 +245,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -284,7 +286,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -316,7 +318,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -343,7 +345,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -395,7 +397,7 @@ MaterialInstance exports the parameter override table.
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -445,7 +447,7 @@ ISM / HISM / Foliage components with more than 200 instances export only the cou
 
 ```json
 {
-    "ExporterVersion": "2.5.4",
+    "ExporterVersion": "2.6.1",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -609,7 +611,7 @@ Material node graphs are out of reach. `CreateAsset` produces an empty material,
 </details>
 
 <details>
-<summary><b>Edit</b>, 5 commandlets</summary>
+<summary><b>Edit</b>, 6 commandlets</summary>
 
 Import regenerates an asset from a spec. Edit changes one that already exists, one writer per facet. This is where the plugin does the most, and what lets an agent hand back a change rather than a description of one.
 
@@ -620,6 +622,7 @@ Import regenerates an asset from a spec. Edit changes one that already exists, o
 | `EditTextureAsset` | Texture2D build settings | dry run |
 | `EditMaterialAsset` | Material usage flags and base settings, MaterialInstanceConstant parent and parameter overrides | dry run |
 | `EditDataTable` | Property values on existing DataTable rows | dry run |
+| `EditPCGGraph` | Add and delete PCG nodes, connect and break edges, set node settings, manage graph parameters and graph-level settings, auto-arrange the layout | dry run |
 
 Dry run is not a preview. Without `-apply` every writer still runs against the real asset and only the save is skipped, so a clean dry run means the spec validated for real. The changes die with the process.
 
@@ -631,7 +634,7 @@ Eleven writers, split along the same facets the editor's own Blueprint diff spli
 | --- | --- | --- |
 | `Components` | `ComponentsMode` | SimpleConstructionScript component tree |
 | `Widgets` | `DesignerMode` | WidgetBlueprint widget tree, add / delete / reparent / rename, widget or slot properties |
-| `WidgetAnimations` | `DesignerMode` | WidgetBlueprint animation curves, keys on an existing channel |
+| `WidgetAnimations` | `DesignerMode` | WidgetBlueprint animations, create and delete an animation, add property tracks, playback range, rename, keyframes |
 | `Variables` | `MyBlueprintMode` | member variables, `Modify` retypes an existing one |
 | `Defaults` | `DefaultsMode` | CDO and component template values, reaching components inherited from a parent Blueprint |
 | `Functions` | `MyBlueprintMode` | function graphs, signature, local variables, access and flags |
@@ -652,7 +655,7 @@ Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions 
 | Facet | What it reaches |
 | --- | --- |
 | `Widgets` | `Add` / `Delete` / `Reparent` / `Rename` / `Modify`. Structural edits without a whole-tree Import. A reparent keeps the widget object, so its GUID, animation bindings and graph references follow it. Deleting a panel that still holds children is refused unless `Recursive` |
-| `WidgetAnimations` | `SetKeys` replaces one channel's keys whole, addressed by animation, bound widget, track and channel meta name. Field names match what `WidgetLayoutExport` prints. Keys only, tracks and channels are made in the editor |
+| `WidgetAnimations` | `Add` / `Remove` / `Rename` / `SetPlaybackRange` on an animation, `AddTrack` / `RemoveTrack` on a bound property, `SetKeys` replaces one channel's keys whole. Addressed by animation, bound widget, track and channel meta name, field names match what `WidgetLayoutExport` prints. An animation builds from nothing, no editor pass needed |
 | `Graph` nodes | 25 node types, from `CallFunction` and `Branch` through `DynamicCast`, `MakeStruct` / `BreakStruct`, the four `Switch` kinds, `SpawnActor`, `Timeline`, `MathExpression` and `AnimGetter`. A `Type` starting with `/` is read as a class path, which is how anim graph nodes get built. A `Type` outside the table resolves as a StandardMacros graph name, so `Gate` and `DoOnce` need no ceremony |
 | `Graph` `Bind` | Property-access bindings on anim nodes, the Bind dropdown in the Details panel. Aimed at a transition's Id it binds that transition's result |
 | `Graph` `ExposePins` | Shows or hides the pin for an anim node property, addressed by name rather than by array index |
@@ -713,7 +716,7 @@ Modified uassets show up in the version control working copy afterwards.
 </details>
 
 <details>
-<summary><b>Audit</b>, 4 commandlets and 3 scripts</summary>
+<summary><b>Audit</b>, 5 commandlets and 3 scripts</summary>
 
 | RunName | What it checks |
 | --- | --- |
@@ -721,8 +724,9 @@ Modified uassets show up in the version control working copy afterwards.
 | `AuditLevelTopology` | Streaming relationships between levels, which one is persistent, which one is a sublevel |
 | `AuditTexture` | Whether a texture's build settings match how it is actually sampled, rules T1 to T15 |
 | `AuditMaterial` | Nanite compatibility and usage flags against actual application, rules N1 to N9 and U1 to U4 |
+| `AuditPCG` | Static checks on PCG graphs: unconnected required pins, orphan nodes, bypassed nodes, missing or recursive subgraphs, unread graph parameters, spawners with nothing to spawn, contradictory hierarchical generation settings, plus PCG component configuration on levels |
 
-All four are read-only and save no package. Exit code 3 means the run worked and the report has findings, which is what a commit gate keys on.
+All five are read-only and save no package. Exit code 3 means the run worked and the report has findings, which is what a commit gate keys on.
 
 **AuditLevelReference** walks the Asset Registry dependency graph and checks package existence one by one, it does not load worlds. Existence resolves against the mounted content roots, so every plugin of the project must be enabled before the run, otherwise dependencies under an unmounted root come back as false breakage. Its paired operation is `SanitizeLevelReference` in the Migrate group, audit finds the breakage, sanitize fixes it.
 
@@ -768,6 +772,22 @@ Without `-PersistentLevel` the script picks the single `PersistentHost` out of t
 
 </details>
 
+## What 2.6 added
+
+### PCG
+
+Four commandlets make a PCG graph readable, queryable, editable and auditable. A PCG graph is not an EdGraph, it holds its own nodes, pins and edges, and the editor graph is only a mirror built when the window opens, so these read and write the runtime model directly and need no editor UI. Nodes are addressed by object name, node settings go through reflection, and the export defaults to the delta against the class defaults.
+
+A new graph is made by creating an empty `PCGGraph` with `CreateAsset` and filling it with `EditPCGGraph`, there is no separate Import path.
+
+Boundary: generation is never triggered, so the errors and warnings a node reports during generation are out of reach.
+
+### Widget animation
+
+`WidgetLayoutExport` exports an animation's bindings, tracks, property paths and keyframes, and `EditBlueprint`'s `WidgetAnimations` builds an animation from nothing, adds property tracks, writes keyframes, changes the playback range, renames, and deletes tracks and animations.
+
+The track class follows from the property type, off the same mapping the engine registers with Sequencer, covering bool, numeric, string, object reference, color, vector, plus the UMG-specific `FWidgetTransform` and `FMargin`. Creating a track also creates a section covering the playback range, so keys go in right after.
+
 ## Reading strategy
 
 The exported JSON can be very large, a Blueprint of moderate complexity already reaches several thousand lines.
@@ -809,11 +829,11 @@ Prerequisites: Unreal Engine 5.7, and the plugin must be compiled with the proje
 | Doc | Contents |
 | --- | --- |
 | `Docs/AI-Guide.md` | Call manual for AI agents, a decision table covering every capability, call templates, common pitfalls |
-| `Docs/Export.md` | Export group, 11 commandlets, every JSON field |
+| `Docs/Export.md` | Export group, 13 commandlets, every JSON field |
 | `Docs/Import.md` | Import group, 3 commandlets, spec format |
-| `Docs/Edit.md` | Edit group, 5 commandlets, every spec key and every layout op |
+| `Docs/Edit.md` | Edit group, 6 commandlets, every spec key and every layout op |
 | `Docs/Migrate.md` | Migrate group, 8 commandlets |
-| `Docs/Audit.md` | Audit group, 4 commandlets, full rule tables, stream metric workflow |
+| `Docs/Audit.md` | Audit group, 5 commandlets, full rule tables, stream metric workflow |
 
 These docs are reference material for agents to read. Where behavior and documentation disagree, the source wins, the block comment at the top of each commandlet header carries the full contract.
 
@@ -829,7 +849,7 @@ UE is only the proving ground, the three reusable parts do not depend on it.
 
 ## Version
 
-Current version: **2.5.4**
+Current version: **2.6.1**
 
 Defined in `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`, and embedded in the `ExporterVersion` field of every exported JSON.
 

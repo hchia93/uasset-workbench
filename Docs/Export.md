@@ -17,6 +17,8 @@
 | `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key |
 | `AnimBlueprintExport` | AnimBP EdGraph、状态机的状态、转换、blend 设置、入口状态与 event 绑定 |
 | `LevelExport` | Level 的 actor / component、与 archetype 的差异属性、碰撞与静态网格与 ISM 摘要、streaming level |
+| `PCGGraphExport` | PCG graph 的节点、pin、连线、settings delta、参数、子图引用、comment；graph instance 出参数覆写 |
+| `PCGCatalogExport` | 可用 PCG 节点类的字典：pin 表、属性表、预配置项，加 `-scandir` 下的 graph、settings 资产、Blueprint element、data asset |
 
 ## 调用
 
@@ -30,11 +32,26 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 一次可以传多个资产，逗号分隔，同一次运行共用一个 RunName。
 
+`PCGCatalogExport` 不吃 `AssetList`，位置参数留空串，`-filter=` 走 `EXTRA_ARGS`。输出固定落 `Intermediate/UAssetExport/PCGCatalogExport_rNA_<YYYYMMDD-HHMMSS>.json`。
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" \
+    "<PROJECT_DIR>/MyProject.uproject" \
+    PCGCatalogExport \
+    "" \
+    10 600 \
+    '-filter=Spawner'
+```
+
 ## 详略开关
 
 | 参数 | 适用 | 效果 |
 | --- | --- | --- |
 | `-graphs` | `BlueprintEdGraphExport` | `Graphs[]` 展开到 `Nodes` 与 pin |
+| `-full` | `PCGGraphExport` | `Nodes[].Settings` 出全量属性，默认只出相对 CDO 的 delta |
+| `-filter=` | `PCGCatalogExport` | 按类名、标题、分类、别名的子串过滤 `Native[]`，必给 |
+| `-scandir=` | `PCGCatalogExport` | 资产段扫描范围，默认 `/Game` |
 
 不给 `-graphs` 时 `Graphs[]` 只有图级字段与 `Signature`，一个中等 Blueprint 从几千行降到几十行。`DeleteBlueprintNode` 要的 `NodeId` 只在展开态里有。
 
@@ -425,6 +442,39 @@ Montage 没有 sync marker，那是 sequence 独有的。
 
 `Sections[].NextSection` 缺席即为段落结束，不要按空串判。
 
+## WidgetLayoutExport
+
+`ExportType`: `WidgetLayout`
+
+| 字段 | 含义 |
+| --- | --- |
+| `WidgetBlueprint` / `AssetPath` / `ParentClass` | 资产身份 |
+| `WidgetTree` | 控件树，逐层嵌套 |
+| `Animations[]` | 见下 |
+| `Graphs[]` | EdGraph，形状见 [EdGraph 通用形状](#edgraph-通用形状) |
+
+`Animations[]` 每项。
+
+| 字段 | 含义 |
+| --- | --- |
+| `Name` | 动画显示名，`EditBlueprint` 的 `Animation` 字段抄它 |
+| `StartTime` / `EndTime` / `Duration` | playback range，秒 |
+| `DisplayRate` / `TickResolution` | 时间轴帧率与内部刻度 |
+| `Bindings[]` | 每项 `Widget` / `Guid` / `IsRootWidget`，slot 绑定另发 `SlotWidget` |
+| `Tracks[]` | 见下 |
+
+`Tracks[]` 每项。
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `BoundWidget` | 恒发 | 轨道绑定的控件名 |
+| `TrackType` | 恒发 | 轨道类完整路径 |
+| `TrackName` | 恒发 | 编辑器时间轴上显示的名字，`SetKeys` 的 `TrackName` 抄它 |
+| `PropertyName` / `PropertyPath` | 属性轨道 | `AddTrack` 的 `PropertyPath` 抄后者 |
+| `Sections[]` | 恒发 | 每项 `RowIndex` / `StartTime` / `EndTime` / `Channels[]` |
+
+`Channels[]` 每项 `Name` 与 `Keys[]`，key 带 `Time` 秒、`Value`、`Interp`。单通道轨道的 `Name` 是 `None`，那也是 `SetKeys` 里要填的值。
+
 ## LevelExport
 
 `ExportType`: `Level`
@@ -486,3 +536,74 @@ Montage 没有 sync marker，那是 sequence 独有的。
 | `BasePropertyOverrides` | 恒发 | 对象，什么都没覆盖时是 `{}` |
 
 `BasePropertyOverrides` 的四个子键各自由对应的 `bOverride_` 标志单独门控: `BlendMode` / `ShadingModel` / `TwoSided` / `OpacityMaskClipValue`。
+
+## PCGGraphExport
+
+`ExportType`: `PCGGraph` 或 `PCGGraphInstance`
+
+PCG graph 不是 EdGraph。`UPCGGraph` 自己持有节点、pin 与边，编辑器图只是打开窗口时建的镜像，导出直接读运行时模型。
+
+### 顶层字段
+
+`PCGGraph`。
+
+| 字段 | 含义 |
+| --- | --- |
+| `GraphName` / `AssetPath` / `ExportTimestamp` | 资产身份 |
+| `GraphSettings` | 图级设定：`bUseHierarchicalGeneration` / `HiGenGridSize` / `HiGenExponential` / `bUse2DGrid` / `bHasDefaultConstructedInputs` / `bLandscapeUsesMetadata` / `bIgnoreLandscapeTracking` / `bIsEditorOnly` / `bIsStandaloneGraph` / `bDebugFlagAppliesToIndividualComponents` / `Category` / `Description` / `GenerationRadii`，值是 ExportText 字符串 |
+| `Parameters[]` | graph parameter，每项 `Name` / `Type` / `TypeObject` / `CppType` / `Value` |
+| `Nodes[]` / `NodeCount` | 见下 |
+| `Edges[]` / `EdgeCount` | 扁平边表，每项 `From` 与 `To`，各带 `Node` / `Pin`，`From` 是上游 |
+| `Subgraphs[]` | 每项 `Graph` / `Nodes[]`，调用自己的另标 `Recursive` |
+| `Comments[]` | 每项 `Text` / `PositionX` / `PositionY` / `Width` / `Height` |
+| `ExtraEditorNodeCount` | 旧版 comment 对象计数 |
+
+`Nodes[]` 每项。
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `NodeId` | 恒发 | 节点的 object name，`EditPCGGraph` 用它寻址。不是 guid，复制粘贴出的节点会换名 |
+| `Title` | 恒发 | 编辑器显示的单行标题 |
+| `AuthoredTitle` | 用户改过标题 | 用户输入的原名 |
+| `ElementType` | 恒发 | `Input` / `Output` / `Native` / `Subgraph` / `Blueprint` / `SettingsInstance` |
+| `PositionX` / `PositionY` | 恒发 | 图上位置 |
+| `Comment` | 非空 | 节点气泡注释 |
+| `Enabled` | 恒发 | `false` 即 bypass |
+| `SettingsClass` / `SettingsType` | 有 settings | 类完整路径与 `EPCGSettingsType` 分类 |
+| `SettingsAsset` | `SettingsInstance` | 引用的外部 settings 资产 |
+| `Seed` | 节点用 seed | 节点 seed |
+| `Subgraph` | `Subgraph` | 被调用的 graph 路径 |
+| `BlueprintElement` | `Blueprint` | element 类路径 |
+| `Settings` | 有非默认值 | 子类属性相对 CDO 的 delta，`-full` 时全量。instanced 子对象嵌套成 `Class` / `Properties` |
+| `InputPins[]` / `OutputPins[]` | 恒发 | 见下 |
+
+pin 每项: `Label` / `AllowedTypes` / `Usage` / `PinStatus` / `AllowMultipleData` / `AllowMultipleConnections` / `Connected` / `EdgeCount`，接了线另发 `CurrentTypes`，隐藏 pin 另发 `Invisible`。`PinStatus` 为 `Required` 的输入 pin 没接线就是 `AuditPCG` 的 P1。
+
+`PCGGraphInstance` 顶层: `GraphInstanceName` / `AssetPath` / `Parent`（直接指向的 graph 或 instance）/ `ResolvedGraph`（最终解析到的 graph）/ `Parameters[]`，每项比 graph 的多一个 `Overridden`。
+
+## PCGCatalogExport
+
+`ExportType`: `PCGCatalog`
+
+不吃 `AssetList`。`Native[]` 由反射枚举全部 `UPCGSettings` 子类，跳过 abstract / deprecated / hidden 与 Procedural Vegetation 专属节点，与 PCG 编辑器的节点面板同源。
+
+| 字段 | 含义 |
+| --- | --- |
+| `Filter` / `ScanDir` | 本次运行的参数 |
+| `Native[]` / `NativeCount` | 过滤后的节点类 |
+| `Graphs[]` | `-scandir` 下的 `PCGGraph` 与 `PCGGraphInstance` 资产，每项 `AssetPath` / `Class` |
+| `SettingsAssets[]` | 独立的 settings 资产 |
+| `DataAssets[]` | `PCGDataAsset` |
+| `BlueprintElements[]` | 父类是 PCG Blueprint element 的 Blueprint，另发 `NativeParent` |
+
+`Native[]` 每项。
+
+| 字段 | 含义 |
+| --- | --- |
+| `Class` / `Name` | 完整路径与短名，`EditPCGGraph` 的 `Class` 抄 `Class` |
+| `Title` / `Category` / `Tooltip` | 编辑器里的显示名、分类、说明 |
+| `Aliases[]` | 旧名别名 |
+| `ExposeToLibrary` | 假的不出现在节点面板 |
+| `Preconfigured[]` / `OnlyPreconfigured` | 预配置项，每项 `Label` / `Index`，`EditPCGGraph` 的 `Preconfigured` 二选一填 |
+| `InputPins[]` / `OutputPins[]` | 默认 pin 表，形状同 `PCGGraphExport` 的 pin 去掉连接状态 |
+| `Properties[]` | 可写属性，每项 `Name` / `CppType` / `Category` / `Default`，另按情况发 `Overridable`（可被 pin 覆盖）/ `EditCondition` / `Tooltip` / `Options[]`（枚举可选值）/ `Instanced` 加 `Class`（instanced 子对象） |

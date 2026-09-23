@@ -350,6 +350,12 @@ namespace
             PackageName.LeftInline(ObjectDelimiter);
         }
 
+        // A run-level export (PCGCatalogExport) stamps a name outside every mount point, not an asset.
+        if (!FPackageName::IsValidLongPackageName(PackageName))
+        {
+            return TEXT("rNA");
+        }
+
         FString PackageFile;
         if (!FPackageName::DoesPackageExist(PackageName, &PackageFile))
         {

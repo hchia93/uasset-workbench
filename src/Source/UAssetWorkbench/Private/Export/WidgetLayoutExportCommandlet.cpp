@@ -22,6 +22,7 @@
 #include "MovieScene.h"
 #include "MovieSceneSection.h"
 #include "MovieSceneTrack.h"
+#include "Tracks/MovieScenePropertyTrack.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "WidgetBlueprint.h"
@@ -331,12 +332,28 @@ TSharedPtr<FJsonObject> UWidgetLayoutExportCommandlet::ExportAnimation(UWidgetAn
         AnimObj->SetNumberField(TEXT("Duration"), EndSeconds - StartSeconds);
     }
 
+    AnimObj->SetStringField(TEXT("DisplayRate"), DisplayRate.ToPrettyText().ToString());
+    AnimObj->SetStringField(TEXT("TickResolution"), TickResolution.ToPrettyText().ToString());
+
     // Build binding GUID -> widget name map
     TMap<FGuid, FString> BindingNameMap;
+    TArray<TSharedPtr<FJsonValue>> BindingsArray;
     for (const FWidgetAnimationBinding& Binding : Animation->AnimationBindings)
     {
         BindingNameMap.Add(Binding.AnimationGuid, Binding.WidgetName.ToString());
+
+        TSharedPtr<FJsonObject> BindingObj = MakeShared<FJsonObject>();
+        BindingObj->SetStringField(TEXT("Widget"), Binding.WidgetName.ToString());
+        BindingObj->SetStringField(TEXT("Guid"), Binding.AnimationGuid.ToString());
+        BindingObj->SetBoolField(TEXT("IsRootWidget"), Binding.bIsRootWidget);
+        // Set on a slot binding only. The animated object is then the slot, reached through the widget it holds.
+        if (!Binding.SlotWidgetName.IsNone())
+        {
+            BindingObj->SetStringField(TEXT("SlotWidget"), Binding.SlotWidgetName.ToString());
+        }
+        BindingsArray.Add(MakeShared<FJsonValueObject>(BindingObj));
     }
+    AnimObj->SetArrayField(TEXT("Bindings"), BindingsArray);
 
     // Object binding tracks (tracks bound to specific widgets)
     TArray<TSharedPtr<FJsonValue>> TracksArray;
@@ -360,8 +377,15 @@ TSharedPtr<FJsonObject> UWidgetLayoutExportCommandlet::ExportAnimation(UWidgetAn
 
             TSharedPtr<FJsonObject> TrackObj = MakeShared<FJsonObject>();
             TrackObj->SetStringField(TEXT("BoundWidget"), WidgetName);
-            TrackObj->SetStringField(TEXT("TrackType"), Track->GetClass()->GetName());
+            TrackObj->SetStringField(TEXT("TrackType"), Track->GetClass()->GetPathName());
             TrackObj->SetStringField(TEXT("TrackName"), Track->GetDisplayName().ToString());
+
+            // PropertyPath is what AddTrack needs back, the track class follows from the property type.
+            if (const UMovieScenePropertyTrack* PropertyTrack = Cast<UMovieScenePropertyTrack>(Track))
+            {
+                TrackObj->SetStringField(TEXT("PropertyName"), PropertyTrack->GetPropertyName().ToString());
+                TrackObj->SetStringField(TEXT("PropertyPath"), PropertyTrack->GetPropertyPath().ToString());
+            }
 
             TArray<TSharedPtr<FJsonValue>> SectionsArray;
 
@@ -373,6 +397,7 @@ TSharedPtr<FJsonObject> UWidgetLayoutExportCommandlet::ExportAnimation(UWidgetAn
                 }
 
                 TSharedPtr<FJsonObject> SectionObj = MakeShared<FJsonObject>();
+                SectionObj->SetNumberField(TEXT("RowIndex"), Section->GetRowIndex());
 
                 // Section time range
                 TRange<FFrameNumber> SectionRange = Section->GetRange();

@@ -11,6 +11,7 @@
 | `EditTextureAsset` | Texture2D 的构建设置 |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 |
 | `EditDataTable` | DataTable 既有行的属性值 |
+| `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
 
 ## EditBlueprint
 
@@ -287,7 +288,46 @@ target 不是 WidgetBlueprint 却带了 `Widgets` key 是错误。
 
 ### WidgetAnimations
 
-Op 只有 `SetKeys`。按 `Animation` 点名动画，再逐层定位到一条通道，整条通道的 key 被 `Keys` 替换。
+Op: `Add` / `Delete` / `Rename` / `SetPlaybackRange` / `AddTrack` / `DeleteTrack` / `SetKeys`。每条操作都要 `Animation` 点名动画。
+
+动画是 Blueprint 变量，所以除 `SetKeys` 外的操作都会触发结构重编译。
+
+| Op | 必填 | 说明 |
+| --- | --- | --- |
+| `Add` | `Animation` | 建一条空动画。`StartTime` 默认 0，`EndTime` 默认 5，`DisplayRate` 默认 20，都是可选 |
+| `Delete` | `Animation` | 删动画，连同它的变量登记 |
+| `Rename` | `Animation` / `NewName` | 显示名与对象名一起改，图里的变量引用跟着重指 |
+| `SetPlaybackRange` | `Animation` / `StartTime` / `EndTime` | 秒 |
+| `AddTrack` | `Animation` / `BoundWidget` / `PropertyPath` | 轨道类由属性类型决定，控件没绑过会一并建绑定 |
+| `DeleteTrack` | `Animation` / `BoundWidget` | 多条轨道时用 `PropertyPath` 或 `TrackName` 点名 |
+| `SetKeys` | `Animation` / `BoundWidget` / `Channel` / `Keys` | 整条通道替换 |
+
+#### AddTrack
+
+`BoundWidget` 写控件名，填 Widget Blueprint 自己的名字表示根控件。`PropertyPath` 是属性路径，`WidgetLayoutExport` 的 `Tracks[].PropertyPath` 原样抄得回来。
+
+轨道类按属性类型解析，与引擎给 Sequencer 注册的那张表同源：
+
+| 属性类型 | 轨道 |
+| --- | --- |
+| `bool` | `UMovieSceneBoolTrack` |
+| `uint8` | `UMovieSceneByteTrack` |
+| enum | `UMovieSceneEnumTrack` |
+| `int32` | `UMovieSceneIntegerTrack` |
+| `float` | `UMovieSceneFloatTrack` |
+| `double` | `UMovieSceneDoubleTrack` |
+| `FString` | `UMovieSceneStringTrack` |
+| 对象引用 | `UMovieSceneObjectPropertyTrack` |
+| `FWidgetTransform` | `UMovieScene2DTransformTrack` |
+| `FMargin` | `UMovieSceneMarginTrack` |
+| `FLinearColor` / `FColor` / `FSlateColor` | `UMovieSceneColorTrack` |
+| `FVector2D` / `FVector` / `FVector4` | `UMovieSceneFloatVectorTrack` |
+
+建轨道时连带建一个覆盖整个 playback range 的 section，所以建完就能直接 `SetKeys`。同一个控件的同一个属性已经有轨道时会报错，不会建第二条。
+
+#### SetKeys
+
+按 `Animation` 点名动画，再逐层定位到一条通道，整条通道的 key 被 `Keys` 替换。
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
@@ -302,11 +342,9 @@ Op 只有 `SetKeys`。按 `Animation` 点名动画，再逐层定位到一条通
 
 整条通道替换，不做按 index 打补丁。key 的时间和值一样常改，index 寻址在曲线变过之后会静默落到错的 key 上。
 
-只改 key，不建轨道不建通道。轨道本身要在编辑器里先建出来。
-
 `Time` 按秒给，按 MovieScene 的 tick resolution 折成帧。
 
-只动动画数据不动类，所以这一节单独跑时不触发结构重编译。
+只动动画数据不动类，所以 `SetKeys` 单独跑时不触发结构重编译。
 
 ```json
 {
@@ -314,10 +352,11 @@ Op 只有 `SetKeys`。按 `Animation` 点名动画，再逐层定位到一条通
     {
       "AssetPath": "/Game/UI/WBP_Foo",
       "WidgetAnimations": [
-        { "Op": "SetKeys", "Animation": "Intro", "BoundWidget": "NewBar", "Channel": "Translation.X",
-          "Keys": [ { "Time": 0.0, "Value": 80.0 },
-                    { "Time": 0.15, "Value": 16.0, "Interp": "Linear" },
-                    { "Time": 0.3, "Value": 0.0 } ] }
+        { "Op": "Add", "Animation": "Intro", "StartTime": 0.0, "EndTime": 1.5, "DisplayRate": 30 },
+        { "Op": "AddTrack", "Animation": "Intro", "BoundWidget": "Tint", "PropertyPath": "RenderOpacity" },
+        { "Op": "SetKeys", "Animation": "Intro", "BoundWidget": "Tint", "Channel": "None",
+          "Keys": [ { "Time": 0.0, "Value": 0.0, "Interp": "Linear" },
+                    { "Time": 1.5, "Value": 1.0, "Interp": "Linear" } ] }
       ]
     }
   ]
@@ -1081,6 +1120,117 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 只改既有行，行名不存在是错误。
 
 落盘前调 `HandleDataTableChanged`，不然编辑器里要重新加载才看得到新值。
+
+## EditPCGGraph
+
+RunName `EditPCGGraph`。参数 `-spec=` 指向 spec 绝对路径，`-apply` 落盘，不给即 dry run。PCG graph 没有编译步骤，保存前调 `ForceNotificationForEditor` 让已打开的 PCG 编辑器窗口重建镜像。
+
+### Writer
+
+固定顺序，不按 spec 键顺序。
+
+| 顺序 | Spec key | 做什么 |
+| --- | --- | --- |
+| 1 | `Parameters` | graph parameter 的增删改名 |
+| 2 | `GraphSettings` | 图级属性 |
+| 3 | `Nodes` | 加删节点、改名、挪位、启停 |
+| 4 | `Properties` | 节点 settings 属性 |
+| 5 | `Edges` | 接断连线 |
+| 6 | `Layout` | 排版 |
+
+任一 writer 失败整个 target 不落盘。
+
+### 调用
+
+同 `EditBlueprint` 的模板，换 RunName。
+
+### Spec
+
+顶层 `Targets[]`，每项 `AssetPath` 加任意 section。
+
+节点寻址：`Node` 字段接受 `PCGGraphExport` 的 `NodeId`、本 spec 里 `Add` 给的 `Id`、或唯一的节点标题。标题撞名时报错并列出全部节点。
+
+### Parameters
+
+数组，每项 `Op` 加 `Name`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Type`（默认 `Double`）/ `TypeObject` / `Value` | `Type` 取 `Bool` / `Byte` / `Int32` / `Int64` / `Float` / `Double` / `Name` / `String` / `Text` / `Enum` / `Struct` / `Object` / `SoftObject` / `Class` / `SoftClass`。`Enum` / `Struct` / `Object` / `Class` 用 `TypeObject` 给枚举、结构或类的路径 |
+| `Set` | `Value` | 序列化字符串，形状同导出的 `Value` |
+| `Remove` | | |
+| `Rename` | `NewName` | |
+
+### GraphSettings
+
+对象，键是 `PCGGraphExport` 的 `GraphSettings` 里的属性名，值是字符串。
+
+### Nodes
+
+数组，每项 `Op`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Id` / `Class` 或 `SettingsAsset` / `Title` / `PositionX` / `PositionY` / `Preconfigured` / `Subgraph` / `BlueprintElement` / `Properties` | `Class` 抄 catalog 的完整路径，短名也认：先按原名找，再套成 `PCG<Name>Settings`。`SettingsAsset` 建的是引用外部 settings 资产的 instance 节点。`Preconfigured` 填 catalog 里的 `Index` 或 `Label`。`Subgraph` 只对 subgraph 类有效，`BlueprintElement` 只对 `PCGBlueprintSettings` 有效，接受生成类路径或 Blueprint 资产路径。`Properties` 在创建时套上 |
+| `Delete` | `Node` | 连线一并断开。输入输出节点拒删 |
+| `Rename` | `Node` / `Title` | |
+| `Move` | `Node` / `PositionX` / `PositionY` | |
+| `Enable` | `Node` / `Enabled` | 等同编辑器里的 bypass 开关 |
+
+### Properties
+
+对象，键是节点，值是属性对象。路径语法同 `DataAssetImport`，`A.B[2].C` 能进 instanced 子对象，例如 `MeshSelectorParameters.MeshEntries[0].Descriptor.StaticMesh`。写完会触发一次 settings 变更广播让动态 pin 刷新。
+
+指到 `SettingsInstance` 节点会被拒绝，那是共享的 settings 资产，改它影响所有使用者。
+
+### Edges
+
+数组，每项 `Op`，缺省 `Connect`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Connect` | `From` / `FromPin` / `To` / `ToPin` | 节点那侧只有一个 pin 时 label 可省。类型不兼容时报错并给出两端类型 |
+| `Disconnect` | 同上 | |
+| `DisconnectAll` | `Node` / `Pin` | 不给 `Pin` 断该节点全部连线 |
+
+### Layout
+
+对象，`Op` 只有 `Arrange`。按最长路径分列，同列按上游平均行号排序让连线尽量平。
+
+| 字段 | 默认 |
+| --- | --- |
+| `PosX` / `PosY` | 0 |
+| `Spacing` | 120 |
+| `RowSpacing` | 60 |
+| `NodeWidth` | 280 |
+
+PCG 节点不记尺寸，宽度按 `NodeWidth`，高度按 pin 数估算。
+
+### 例子
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/PCG/PCG_Foo",
+      "Nodes": [
+        { "Op": "Add", "Id": "transform", "Class": "/Script/PCG.PCGTransformPointsSettings", "Title": "Jitter", "PositionX": 2000, "PositionY": 800, "Properties": { "OffsetMax": "(X=10.000000,Y=10.000000,Z=0.000000)" } },
+        { "Op": "Add", "Id": "filter", "Class": "DensityFilter", "PositionX": 2400, "PositionY": 800 },
+        { "Op": "Move", "Node": "WorldRayHitQuery_0", "PositionX": -224, "PositionY": 200 }
+      ],
+      "Properties": { "SurfaceSampler_0": { "PointsPerSquaredMeter": "0.250000" } },
+      "Edges": [
+        { "From": "DensityFilter_0", "FromPin": "Out", "To": "transform", "ToPin": "In" },
+        { "From": "transform", "To": "filter" }
+      ]
+    }
+  ]
+}
+```
+
+### 退出码
+
+同 `EditBlueprint`。
 
 ## 约束
 

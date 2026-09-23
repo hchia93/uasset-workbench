@@ -10,6 +10,7 @@
 | `AuditLevelTopology` | level 之间的 streaming 关系，谁是 persistent，谁是 sublevel |
 | `AuditTexture` | 贴图设置与用途是否对得上，规则 T1-T15 |
 | `AuditMaterial` | 材质的 Nanite 兼容与 usage flag 是否对得上实际挂载，规则 N1-N9 与 U1-U4 |
+| `AuditPCG` | PCG graph 的静态规则 P1-P7，加关卡上 PCGComponent 的 P8 |
 
 ## AuditLevelReference
 
@@ -442,6 +443,62 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 ```
 
 见 [Edit.md](Edit.md)。
+
+## AuditPCG
+
+RunName `AuditPCG`。只做静态检查，不触发生成，节点在生成期报的 error / warning 拿不到。
+
+### 参数
+
+| 参数 | 含义 |
+| --- | --- |
+| `AssetList` | 点名的 graph，给了就不扫目录 |
+| `-scandir=` | 扫 `PCGGraph` 资产的目录，默认 `/Game` |
+| `-levels=` | 点名的关卡，扫其中的 PCGComponent |
+| `-withlevels` | 扫 `-scandir` 下全部关卡。关卡要整个加载，所以默认不扫 |
+| `-report=` | 报告路径，默认 `Intermediate/AuditPCG/<stamp>.json` |
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" \
+    "<PROJECT_DIR>/MyProject.uproject" \
+    AuditPCG \
+    "" \
+    10 600 \
+    '-scandir=/Game/PCG -withlevels -report="C:/temp/pcg.json"'
+```
+
+### 规则
+
+| 规则 | 级别 | 判定 |
+| --- | --- | --- |
+| P1 | Error | `Required` 输入 pin 没接线 |
+| P2 | Warning | 孤立节点，任何 pin 都没连线，输入输出节点除外 |
+| P3 | Warning | 节点被 bypass（`Enabled` 为假） |
+| P4 | Error | subgraph 节点指向空，或调用自己的 graph |
+| P5 | Warning | graph parameter 没有任何 Get Graph Parameter 节点读它 |
+| P6 | Error | Static Mesh Spawner 的 weighted selector 没有 mesh entry，或 Spawn Actor 没有模板类且 `TemplateActorClass` pin 没接线 |
+| P7 | Warning / Info | 图没开 HiGen 却有 Grid Size 节点（Warning），或开了 HiGen 但一个 Grid Size 节点都没有（Info） |
+| P8 | Error / Warning / Info | 关卡上的 PCGComponent：graph 为空（Error），runtime 生成没有 scheduling policy（Warning），`bActivated` 为假（Info） |
+
+没有 debug 残留规则：`bDebug` 是 Transient，不入库。
+
+### 退出码
+
+同其他 Audit：0 干净，3 有 Warning 或 Error，1 跑不起来，2 编辑器在跑。
+
+### 报告 JSON
+
+| 字段 | 含义 |
+| --- | --- |
+| `RunName` / `ExporterVersion` | 身份 |
+| `GraphsScanned` / `LevelsScanned` / `ComponentsScanned` | 规模 |
+| `Summary` | `Error` / `Warning` / `Info` 计数 |
+| `Findings[]` | 每项 `Asset` / `Rule` / `Severity` / `Node` / `Current` / `Expected` / `Context`。graph 规则的 `Asset` 是 graph 路径，P8 的是 `<关卡包>:<actor>.<组件>` |
+
+不带 `Spec` 块。修法要看图，按 `Findings` 手写 `EditPCGGraph` 的 spec。
 
 ## Stream metric 工作流
 

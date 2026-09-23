@@ -170,6 +170,8 @@ route_queue() {
     local A
     IFS=',' read -r -a ASSET_ARR <<< "$ASSETS"
     for A in "${ASSET_ARR[@]}"; do
+        # Splitting an empty list yields one empty entry, which the subsystem would count as a missing output.
+        [ -z "$A" ] && continue
         if [ -n "$assets_json" ]; then
             assets_json="$assets_json,"
         fi
@@ -225,11 +227,16 @@ route_commandlet() {
     local A REL
     EXPECTED_PREFIXES=()
     if [ "$GROUP" = "export" ]; then
-        IFS=',' read -r -a ASSET_ARR <<< "$ASSETS"
-        for A in "${ASSET_ARR[@]}"; do
-            REL="${A#/}"
-            EXPECTED_PREFIXES+=("$EXPORT_ROOT/$REL")
-        done
+        if [ -z "$ASSETS" ]; then
+            # An export with no asset list (PCGCatalogExport) names its output after the run.
+            EXPECTED_PREFIXES+=("$EXPORT_ROOT/$RUN")
+        else
+            IFS=',' read -r -a ASSET_ARR <<< "$ASSETS"
+            for A in "${ASSET_ARR[@]}"; do
+                REL="${A#/}"
+                EXPECTED_PREFIXES+=("$EXPORT_ROOT/$REL")
+            done
+        fi
     fi
 
     local CMD_LOG="$QUEUE_ROOT/last_commandlet.log"
