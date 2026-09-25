@@ -49,6 +49,7 @@ namespace UAssetWorkbench
 
     // Property path takes "Array[2].Field" to reach inside arrays, structs and instanced sub-objects. A
     // string value goes through ImportText, the exporter's own format, anything else through the converter.
+    // An instanced object, or an array of them, takes {"Class", "Properties"} per instance instead.
     int32 ApplyProperties(UObject* Target, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);
 
     // Same path syntax rooted at a bare struct instance, which is how a DataTable row is reached.

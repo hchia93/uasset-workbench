@@ -214,6 +214,7 @@ Audit。
 | 给同一个控件的同一个属性建两条轨道 | 会被拒绝。后建的轨道在运行时赢不过先建的，只会让导出多出一条看不出差别的轨道 |
 | `CreateAsset` 漏了 `-unattended` | 引擎的 `FMessageDialog` 不检查 commandlet 模式，某些创建路径会弹窗把进程挂住。这个参数必填 |
 | `CreateAsset` 建 Texture2D 拿到空结果 | 静默失败，先查 `FactoryProperties` 有没有给 `Width` / `Height`，且必须是 2 的幂 |
+| instanced 子对象写了 `{Class, Properties}`，又在同级另写 `"Prop.Child"` 键 | JSON 键序不保证，同级路径可能先写进旧实例，随后被新建的实例替换掉。子对象的值一律放进它的 `Properties` |
 | 想改材质的节点图，或增删 DataTable 的行 | 走 Python 更合适。`unreal.MaterialEditingLibrary` 与 `unreal.DataTableFunctionLibrary` 都有完整的脚本接口，后者的 `export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip。改既有行的属性值不在此列，走 `EditDataTable` |
 | 导出产物不入版本控制 | `Intermediate/UAssetExport` 是临时目录，需要留证据就自行拷走 |
 | 把 Audit 的退出码 3 当成失败 | 3 不是失败，运行本身成功，只是报告里有要处理的东西。跑不起来才是 1 |

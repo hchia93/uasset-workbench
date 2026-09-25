@@ -23,6 +23,7 @@
 #include "Serialization/JsonWriter.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
+#include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -131,6 +132,118 @@ namespace
 
         return false;
     }
+
+    // Full class path, Blueprint asset path, or a bare name matched among BaseClass subclasses.
+    UClass* ResolveInstancedClass(const FString& ClassName, UClass* BaseClass)
+    {
+        if (ClassName.Contains(TEXT("/")))
+        {
+            if (UClass* Direct = LoadClass<UObject>(nullptr, *ClassName))
+            {
+                return Direct;
+            }
+
+            UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *ClassName);
+            return Blueprint ? Blueprint->GeneratedClass.Get() : nullptr;
+        }
+
+        for (TObjectIterator<UClass> It; It; ++It)
+        {
+            if (It->IsChildOf(BaseClass) && It->GetName() == ClassName)
+            {
+                return *It;
+            }
+        }
+
+        return nullptr;
+    }
+
+    // Out of the package like the Details panel does it, GetObjectsWithOuter would keep finding it otherwise.
+    void RetireInstancedObject(UObject* Instance, const UObject* Outer)
+    {
+        if (Instance && Instance->GetOuter() == Outer)
+        {
+            Instance->Rename(nullptr, GetTransientOuterForRename(Instance->GetClass()), REN_DontCreateRedirectors);
+        }
+    }
+
+    // {"Class", "Properties"}. Class builds a fresh instance with the Details panel class picker's flags,
+    // no Class edits the instance already there.
+    bool WriteInstancedObject(FObjectPropertyBase* ObjectProperty, void* Address, UObject* Outer, const FString& Path, const TSharedPtr<FJsonObject>& Spec, int32& OutFailures)
+    {
+        UObject* Current = ObjectProperty->GetObjectPropertyValue(Address);
+        UObject* Target = Current;
+
+        FString ClassName;
+        if (Spec->TryGetStringField(TEXT("Class"), ClassName))
+        {
+            UClass* Class = ResolveInstancedClass(ClassName, ObjectProperty->PropertyClass);
+            const bool bConcreteSubclass = Class && Class->IsChildOf(ObjectProperty->PropertyClass) && !Class->HasAnyClassFlags(CLASS_Abstract);
+            if (!bConcreteSubclass)
+            {
+                UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("%s: %s is not a concrete %s"), *Path, *ClassName, *ObjectProperty->PropertyClass->GetName());
+                ++OutFailures;
+                return false;
+            }
+
+            EObjectFlags Flags = Outer->GetMaskedFlags(RF_PropagateToSubObjects);
+            if (Outer->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject))
+            {
+                Flags |= RF_ArchetypeObject;
+            }
+
+            Target = NewObject<UObject>(Outer, Class, NAME_None, Flags);
+            ObjectProperty->SetObjectPropertyValue(Address, Target);
+            RetireInstancedObject(Current, Outer);
+        }
+
+        if (!Target)
+        {
+            UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("%s holds no instance to edit, give a Class to create one"), *Path);
+            ++OutFailures;
+            return false;
+        }
+
+        const TSharedPtr<FJsonObject>* Properties = nullptr;
+        if (Spec->TryGetObjectField(TEXT("Properties"), Properties))
+        {
+            UAssetWorkbench::ApplyProperties(Target, *Properties, OutFailures);
+        }
+
+        return true;
+    }
+
+    // Resized to the spec, entry N follows WriteInstancedObject against element N.
+    bool WriteInstancedArray(FArrayProperty* ArrayProperty, void* Address, UObject* Outer, const FString& Path, const TArray<TSharedPtr<FJsonValue>>& Entries, int32& OutFailures)
+    {
+        FObjectPropertyBase* ElementProperty = CastField<FObjectPropertyBase>(ArrayProperty->Inner);
+        FScriptArrayHelper Helper(ArrayProperty, Address);
+
+        for (int32 Index = Entries.Num(); Index < Helper.Num(); ++Index)
+        {
+            RetireInstancedObject(ElementProperty->GetObjectPropertyValue(Helper.GetRawPtr(Index)), Outer);
+        }
+        Helper.Resize(Entries.Num());
+
+        bool bAllWritten = true;
+        for (int32 Index = 0; Index < Entries.Num(); ++Index)
+        {
+            const FString EntryPath = FString::Printf(TEXT("%s[%d]"), *Path, Index);
+            const TSharedPtr<FJsonObject>* Spec = nullptr;
+            if (!Entries[Index]->TryGetObject(Spec))
+            {
+                UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("%s is not a {Class, Properties} object"), *EntryPath);
+                ++OutFailures;
+                bAllWritten = false;
+                continue;
+            }
+
+            bAllWritten &= WriteInstancedObject(ElementProperty, Helper.GetRawPtr(Index), Outer, EntryPath, *Spec, OutFailures);
+        }
+
+        return bAllWritten;
+    }
+
     // Strip an object suffix so "/Game/Maps/L_A.L_A" and "/Game/Maps/L_A" both yield the package name.
     FString ToPackageName(const FString& Path)
     {
@@ -243,6 +356,31 @@ int32 UAssetWorkbench::ApplyStructProperties(UStruct* Struct, void* Base, UObjec
         {
             UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("Cannot resolve %s on %s"), *Pair.Key, *Struct->GetName());
             ++OutFailures;
+            continue;
+        }
+
+        // The converter would build an instanced object in the transient package, it never saves with the asset.
+        FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property);
+        const TSharedPtr<FJsonObject>* ObjectSpec = nullptr;
+        const bool bInstancedObject = ObjectProperty && Property->HasAnyPropertyFlags(CPF_InstancedReference);
+        if (bInstancedObject && ValueOwner && Pair.Value->TryGetObject(ObjectSpec))
+        {
+            if (WriteInstancedObject(ObjectProperty, Address, ValueOwner, Pair.Key, *ObjectSpec, OutFailures))
+            {
+                ++Written;
+            }
+            continue;
+        }
+
+        FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property);
+        const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+        const bool bInstancedArray = ArrayProperty && ArrayProperty->Inner->IsA<FObjectPropertyBase>() && ArrayProperty->Inner->HasAnyPropertyFlags(CPF_InstancedReference);
+        if (bInstancedArray && ValueOwner && Pair.Value->TryGetArray(Entries))
+        {
+            if (WriteInstancedArray(ArrayProperty, Address, ValueOwner, Pair.Key, *Entries, OutFailures))
+            {
+                ++Written;
+            }
             continue;
         }
 

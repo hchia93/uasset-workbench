@@ -167,7 +167,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -197,7 +197,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -245,7 +245,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -286,7 +286,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -318,7 +318,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -345,7 +345,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -397,7 +397,7 @@ MaterialInstance 导出参数覆写表。
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -447,7 +447,7 @@ ISM / HISM / Foliage 组件的实例数超过 200 时只导出数量、包围盒
 
 ```json
 {
-    "ExporterVersion": "2.6.1",
+    "ExporterVersion": "2.6.2",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -788,6 +788,12 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 轨道类由属性类型决定，映射与引擎给 Sequencer 注册的那张表同源，涵盖 bool、数值、字符串、对象引用、颜色、向量，以及 UMG 专有的 `FWidgetTransform` 与 `FMargin`。建轨道时连带建一个覆盖播放区间的 section，建完就能直接打点。
 
+### instanced 子对象（2.6.2）
+
+`DataAssetImport`、`CreateAsset`、`EditBlueprint`、`EditAnimAsset`、`EditDataTable` 与 `EditPCGGraph` 的属性写入，instanced 属性收 `{"Class": ..., "Properties": {...}}`，instanced 数组收这种对象的数组。给 `Class` 按 Details 面板类选择器的同一套 flag 新建实例并随资产保存，不给就改现有实例。
+
+语法: `Docs/Import.md` 的 `DataAssetImport` 一节
+
 ## 读取策略
 
 导出的 JSON 可能非常大，一个中等复杂度的 Blueprint 就能到几千行。
@@ -849,7 +855,7 @@ UE 只是验证场，三样可复用的东西不依赖它。
 
 ## 版本
 
-当前版本: **2.6.1**
+当前版本: **2.6.2**
 
 定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`，同时嵌进每份导出 JSON 的 `ExporterVersion` 字段。
 

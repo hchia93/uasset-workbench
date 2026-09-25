@@ -159,7 +159,35 @@ RunName: `DataAssetImport`
 | 形态 | 走什么 | 用在哪 |
 | --- | --- | --- |
 | 字符串 | 反射 `ImportText` | `DataAssetExport` 导出的那种结构字面量，例 `(A=1,B=2)`，所以导出的资产能 round-trip 回去 |
-| 对象或数组 | json 转换器 | 手写 spec 时的嵌套结构与数组，可读性好得多 |
+| 对象或数组 | json 转换器 | 手写 spec 时的嵌套结构与数组，可读性好得多。instanced 子对象例外，见下节 |
+
+### instanced 子对象
+
+属性带 `Instanced`，或类带 `EditInlineNew` 加 `DefaultToInstanced` 时，值写成 `{ "Class": ..., "Properties": {...} }`。
+
+| 键 | 含义 |
+| --- | --- |
+| `Class` | 给了就新建实例，flag 与 Details 面板的类选择器一致，被替换的旧实例移到 transient 包。不给就改现有实例，属性为空时报错 |
+| `Properties` | 可选，规则同顶层：字符串走 `ImportText`，支持点路径，嵌套的 instanced 子对象递归 |
+
+`Class` 收完整类路径 `/Script/Module.ClassName`、Blueprint 资产路径，或裸类名（在属性声明类的子类里匹配）。抽象类或非子类报错。
+
+instanced 子对象数组写成这种对象的数组。数组按 spec 长度重设，截掉的尾部元素移到 transient 包，第 N 项带 `Class` 新建第 N 个元素，不带则改它。`[]` 清空。
+
+```json
+{
+  "AssetPath": "/Game/Path/DA_Foo",
+  "Properties": {
+    "Shape": { "Class": "/Script/MyGame.MyShape_Box", "Properties": { "Extent": "(X=10.0,Y=10.0,Z=10.0)" } },
+    "Modifiers": [
+      { "Properties": { "Factor": "0.5" } },
+      { "Class": "MyModifier_Scale", "Properties": { "Factor": "2.0" } }
+    ]
+  }
+}
+```
+
+JSON 对象键序不保证，子对象的值放进它的 `Properties`，不要在同一对象里另写同级的 `"Shape.Extent"` 键。
 
 ### 调用
 

@@ -264,7 +264,7 @@ Op: `Add` / `Delete` / `Reparent` / `Rename` / `Modify`，都用 `Name` 点名�
 
 新名字被占用是错误。父类上的 `BindWidget` / `BindWidgetOptional` 属性占用该名字是合法例外，那正是要对上的目标。
 
-`Modify` 用 `Properties` 写控件自身的属性，`Slot` 写它在父容器里的 slot 属性，两个可选但至少给一个。值的形态与 `DataAssetImport` 一致，字符串走 `ImportText`，对象与数组走 json 转换器。根控件没有 slot，对它发 `Slot` 是错误。
+`Modify` 用 `Properties` 写控件自身的属性，`Slot` 写它在父容器里的 slot 属性，两个可选但至少给一个。值的形态与 `DataAssetImport` 一致，字符串走 `ImportText`，对象与数组走 json 转换器，instanced 子对象例外，写 `{Class, Properties}`，见 [Import](Import.md) 的 instanced 子对象一节。根控件没有 slot，对它发 `Slot` 是错误。
 
 ```json
 {
@@ -401,6 +401,8 @@ Op: `Add` / `Modify` / `Remove` / `Rename`。
 ### Defaults
 
 每条写一个作用域。不带 `Component` 写 actor CDO 本身，带则写该组件。
+
+`Properties` 的值形态同 `DataAssetImport`，instanced 子对象的 `{ "Class": ..., "Properties": {...} }` 写法见 [Import](Import.md) 的 instanced 子对象一节。
 
 BP 自己声明的组件属性挂在 SCS node 的 template 上，继承来的 native 组件则以 CDO 子对象的形式保存 override，两条路径都覆盖。
 
