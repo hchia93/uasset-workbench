@@ -167,7 +167,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -197,7 +197,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -245,7 +245,7 @@ One EdGraph serializer backs `BlueprintEdGraphExport`, `AnimBlueprintExport` and
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -286,7 +286,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -318,7 +318,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -345,7 +345,7 @@ The transition keys are the ones `EditBlueprint` reads under `StateMachines`, so
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -397,7 +397,7 @@ MaterialInstance exports the parameter override table.
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -447,7 +447,7 @@ ISM / HISM / Foliage components with more than 200 instances export only the cou
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -855,7 +855,7 @@ UE is only the proving ground, the three reusable parts do not depend on it.
 
 ## Version
 
-Current version: **2.6.2**
+Current version: **2.6.3**
 
 Defined in `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`, and embedded in the `ExporterVersion` field of every exported JSON.
 

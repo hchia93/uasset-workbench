@@ -167,7 +167,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "BlueprintEdGraph",
     "Blueprint": "BP_Foo",
     "ParentClass": "PlayerController",
@@ -197,7 +197,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "AnimMontage",
     "AssetName": "AM_Foo_Attack_01",
     "SequenceLength": 0.543,
@@ -245,7 +245,7 @@ MSYS_NO_PATHCONV=1 bash src/scripts/run_commandlet.sh \
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "AnimBlueprint",
     "StateMachines": [
         {
@@ -286,7 +286,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "WidgetLayout",
     "WidgetBlueprint": "WBP_Foo",
     "WidgetTree": {
@@ -318,7 +318,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "DataTable",
     "DataTableName": "DT_Foo",
     "RowStruct": "AttributeMetaData",
@@ -345,7 +345,7 @@ transition 的键就是 `EditBlueprint` 在 `StateMachines` 下读的那套，�
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "Material",
     "MaterialName": "M_Foo",
     "ShadingModel": "MSM_DefaultLit",
@@ -397,7 +397,7 @@ MaterialInstance 导出参数覆写表。
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "Level",
     "LevelName": "L_Foo",
     "WorldSettings": {
@@ -447,7 +447,7 @@ ISM / HISM / Foliage 组件的实例数超过 200 时只导出数量、包围盒
 
 ```json
 {
-    "ExporterVersion": "2.6.2",
+    "ExporterVersion": "2.6.3",
     "ExportType": "NiagaraSystem",
     "SystemName": "NS_Foo",
     "ExposedParameters": [],
@@ -855,7 +855,7 @@ UE 只是验证场，三样可复用的东西不依赖它。
 
 ## 版本
 
-当前版本: **2.6.2**
+当前版本: **2.6.3**
 
 定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`，同时嵌进每份导出 JSON 的 `ExporterVersion` 字段。
 

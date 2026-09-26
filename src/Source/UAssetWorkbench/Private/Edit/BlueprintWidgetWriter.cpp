@@ -404,6 +404,7 @@ namespace
             }
 
             Widget->SetDisplayLabel(Name);
+            WidgetBP->OnVariableAdded(Widget->GetFName());
 
             const TSharedPtr<FJsonObject>* Properties = nullptr;
             if (Desc->TryGetObjectField(TEXT("Properties"), Properties))
