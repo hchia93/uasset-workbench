@@ -151,6 +151,30 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位置参数留空串。`AuditTexture` 与 `AuditMaterial` 的入口资产写 `AssetList`，不给就按 `-scandir` 扫。
 
+## 编辑器会话
+
+编辑器一律经 `scripts/editor_session.py` 起停，多个 agent、同一项目的多份 checkout 共用一台机器也不互相踩。
+
+注册表: `%LOCALAPPDATA%\UAssetWorkbench\editor_sessions.json`，全机共享
+
+| 命令 | 作用 |
+| --- | --- |
+| `launch --owner <name> [--uproject <path>] [-- <editor args>]` | 起编辑器，分配最小空闲编号，打印 `EDITOR #N pid=... owner=... project=...`。同项目没有别的活编辑器时才清 task queue 的 `.alive` heartbeat |
+| `close --owner <name> <N>` | 用 `taskkill /F /T /PID` 关掉 #N。#N 属于别的 owner 时拒绝，退出码 3 |
+| `release --owner <name> [--uproject <path>]` | 关掉本 owner 在该项目上的全部编辑器。别的 owner 的编辑器还占着项目时退出码 3，此时 build 会撞上被锁的二进制 |
+| `list` | 列出活编辑器的编号、pid、owner、项目 |
+
+`--owner` 必填，用 agent 或 session 的稳定名字。谁起的编辑器谁关，记住自己的编号。
+
+`exec_in_editor.py` 只连本项目的编辑器，按 remote execution pong 的 `project_root` 过滤。本项目开着不止一个编辑器时直接失败并列出候选，用 `--editor <N>` 点名，按 pid 校验。
+
+```bash
+python Plugins/UAssetWorkbench/scripts/exec_in_editor.py [--editor <N>] <script.py>
+python Plugins/UAssetWorkbench/scripts/exec_in_editor.py [--editor <N>] --cmd "<statement>"
+```
+
+`run_commandlet.sh` 用的 in-editor 队列在各项目自己的 `Saved/` 下，天然跟着项目走。同项目的两个编辑器共用一个队列。
+
 ## 跑完了去哪看
 
 编辑器开着时走 queue 路径，每个 run 在 Message Log 的 `UAsset Workbench` 面板下开一页，页名就是 run 名。run 自己的每一行日志（`LogUAssetWorkbench*` 全部六个 category）都镜像到那一页，按 Info / Warning / Error 分级，可以用面板顶部的 filter 只看 warning 和 error。
@@ -198,6 +222,7 @@ Audit。
 | 坑 | 处理 |
 | --- | --- |
 | 编辑器开着时直接起 commandlet | 一律走 wrapper。commandlet 检测到活的 heartbeat 会退出码 2 自保 |
+| 按映像名杀编辑器，`taskkill /IM UnrealEditor.exe` 或 `Stop-Process -Name UnrealEditor` | 会连带杀掉本机其他 agent 的编辑器。只关自己起的，走 `editor_session.py` 的 `close` / `release` |
 | 在 `EXTRA_ARGS` 里写 `-assets=` | 入口资产只走位置参数 `AssetList`。wrapper 由它生成 `-assets`，queue 路径由任务 json 的 `Assets` 数组构造，两边在 `AssetList` 为空时都不发这个 flag |
 | 导出的 JSON 可能上万行 | 先 grep 定位再按行号区间读，不要整份读进上下文 |
 | `RedirectBlueprintEvent`、`RedirectBlueprintPin`、`DeleteBlueprintNode` 默认不写盘 | 先读 dry run 输出，确认命中的资产与节点，再加 `-apply` |

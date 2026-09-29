@@ -1,15 +1,22 @@
-# Executes a python file (or statement) inside the running editor via the engine's
+# Executes a python file (or statement) inside a running editor via the engine's
 # python remote-execution protocol: multicast discovery, then the editor dials back
 # over TCP and runs the command in-process.
+# Only editors of this script's own project answer. With several of them up, --editor
+# picks one by its editor_session.py index.
 # Usage:
-#   python exec_in_editor.py <script.py>
-#   python exec_in_editor.py --cmd "unreal.log('hi')"
+#   python exec_in_editor.py [--editor <index>] <script.py>
+#   python exec_in_editor.py [--editor <index>] --cmd "unreal.log('hi')"
 
 import json
+import os
 import socket
 import sys
 import time
 import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import editor_session
 
 MULTICAST_GROUP = ("239.0.0.1", 6766)
 LOCAL_ADAPTER = "127.0.0.1"
@@ -18,6 +25,7 @@ VERSION = 1
 NODE_ID = str(uuid.uuid4())
 DISCOVER_TIMEOUT_SEC = 3.0
 RESULT_TIMEOUT_SEC = 120.0
+PID_PROBE = "import os; print('UAW_PID=' + str(os.getpid()))"
 
 
 def message(msg_type, data=None, dest=None):
@@ -39,8 +47,9 @@ def parse(blob):
     return payload
 
 
-def discover(udp):
+def discover_all(udp):
     udp.sendto(message("ping"), MULTICAST_GROUP)
+    nodes = {}
     deadline = time.time() + DISCOVER_TIMEOUT_SEC
     while time.time() < deadline:
         udp.settimeout(max(0.1, deadline - time.time()))
@@ -50,19 +59,91 @@ def discover(udp):
             break
         payload = parse(blob)
         if payload and payload.get("type") == "pong":
-            return payload["source"]
+            nodes[payload["source"]] = payload.get("data") or {}
+    return nodes
+
+
+def run_on_node(udp, node, command, exec_mode):
+    tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    tcp_server.bind((LOCAL_ADAPTER, 0))
+    tcp_server.listen(1)
+    command_port = tcp_server.getsockname()[1]
+
+    udp.sendto(message("open_connection", {"command_ip": LOCAL_ADAPTER, "command_port": command_port}, dest=node), MULTICAST_GROUP)
+
+    tcp_server.settimeout(DISCOVER_TIMEOUT_SEC)
+    try:
+        conn, _ = tcp_server.accept()
+    except socket.timeout:
+        tcp_server.close()
+        return None, "editor did not dial back"
+
+    conn.sendall(message("command", {"command": command, "unattended": True, "exec_mode": exec_mode}, dest=node))
+
+    conn.settimeout(RESULT_TIMEOUT_SEC)
+    buffer = b""
+    result = None
+    error = None
+    while result is None:
+        try:
+            chunk = conn.recv(8192)
+        except socket.timeout:
+            error = "timed out waiting for command_result"
+            break
+        if not chunk:
+            break
+        buffer += chunk
+        payload = parse(buffer)
+        if payload and payload.get("type") == "command_result":
+            result = payload["data"]
+
+    udp.sendto(message("close_connection", dest=node), MULTICAST_GROUP)
+    conn.close()
+    tcp_server.close()
+    if result is None and error is None:
+        error = "connection closed without a result"
+    return result, error
+
+
+def probe_pid(udp, node):
+    result, _ = run_on_node(udp, node, PID_PROBE, "ExecuteStatement")
+    for entry in (result or {}).get("output", []):
+        text = entry.get("output", "")
+        if "UAW_PID=" in text:
+            return int(text.split("UAW_PID=")[1].split()[0])
     return None
 
 
+def matches_project(data, project_dir):
+    root = data.get("project_root")
+    return not root or editor_session.normalize_dir(root) == editor_session.normalize_dir(project_dir)
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("usage: exec_in_editor.py <script.py> | --cmd <statement>")
+    args = sys.argv[1:]
+    editor_index = None
+    if len(args) >= 2 and args[0] == "--editor":
+        editor_index, args = int(args[1]), args[2:]
+
+    if not args:
+        print("usage: exec_in_editor.py [--editor <index>] <script.py> | --cmd <statement>")
         return 2
 
-    if sys.argv[1] == "--cmd":
-        command, exec_mode = sys.argv[2], "ExecuteStatement"
+    if args[0] == "--cmd":
+        command, exec_mode = args[1], "ExecuteStatement"
     else:
-        command, exec_mode = sys.argv[1], "ExecuteFile"
+        command, exec_mode = args[0], "ExecuteFile"
+
+    session = None
+    if editor_index is not None:
+        session = editor_session.find_session(editor_index)
+        if session is None:
+            print("FAIL: no live editor #{} in the registry, see editor_session.py list".format(editor_index))
+            return 1
+        project_dir = Path(session["uproject"]).parent
+    else:
+        project_dir = Path(__file__).resolve().parents[3]
 
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -72,51 +153,29 @@ def main():
     udp.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
     udp.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 0)
 
-    editor_node = discover(udp)
-    if not editor_node:
-        print("FAIL: no editor answered the ping (editor closed, or remote execution disabled)")
+    nodes = discover_all(udp)
+    candidates = [node for node, data in nodes.items() if matches_project(data, project_dir)]
+    if not candidates:
+        print("FAIL: no editor of {} answered the ping (editor closed, or remote execution disabled)".format(project_dir))
         return 1
 
-    tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcp_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    tcp_server.bind((LOCAL_ADAPTER, 0))
-    tcp_server.listen(1)
-    command_port = tcp_server.getsockname()[1]
-
-    udp.sendto(message("open_connection", {"command_ip": LOCAL_ADAPTER, "command_port": command_port}, dest=editor_node), MULTICAST_GROUP)
-
-    tcp_server.settimeout(DISCOVER_TIMEOUT_SEC)
-    try:
-        conn, _ = tcp_server.accept()
-    except socket.timeout:
-        print("FAIL: editor did not dial back")
-        return 1
-
-    conn.sendall(message("command", {"command": command, "unattended": True, "exec_mode": exec_mode}, dest=editor_node))
-
-    conn.settimeout(RESULT_TIMEOUT_SEC)
-    buffer = b""
-    result = None
-    while result is None:
-        try:
-            chunk = conn.recv(8192)
-        except socket.timeout:
-            print("FAIL: timed out waiting for command_result")
+    if session is not None:
+        target = next((node for node in candidates if probe_pid(udp, node) == session["pid"]), None)
+        if target is None:
+            print("FAIL: editor #{} (pid {}) did not answer yet".format(editor_index, session["pid"]))
             return 1
-        if not chunk:
-            break
-        buffer += chunk
-        payload = parse(buffer)
-        if payload and payload.get("type") == "command_result":
-            result = payload["data"]
+    elif len(candidates) > 1:
+        print("FAIL: {} editors of {} are up, pick one with --editor <index>:".format(len(candidates), project_dir))
+        editor_session.cmd_list()
+        return 1
+    else:
+        target = candidates[0]
 
-    udp.sendto(message("close_connection", dest=editor_node), MULTICAST_GROUP)
-    conn.close()
-    tcp_server.close()
+    result, error = run_on_node(udp, target, command, exec_mode)
     udp.close()
 
     if result is None:
-        print("FAIL: connection closed without a result")
+        print("FAIL: {}".format(error))
         return 1
 
     for entry in result.get("output", []):
