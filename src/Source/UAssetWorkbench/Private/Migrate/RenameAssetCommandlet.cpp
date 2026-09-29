@@ -151,8 +151,14 @@ int32 URenameAssetCommandlet::Main(const FString& Params)
     if (!AssetTools.RenameAssets(RenameData))
     {
         // A CDO or config soft reference into this batch makes AssetRenameManager raise an OkCancel prompt,
-        // which a commandlet answers with Cancel. Repoint the ini at the destination path first, then re-run.
-        UE_LOG(LogUAssetWorkbenchMigrator, Error, TEXT("RenameAssets failed, nothing was written. Search the log for \"Message dialog closed\": a CDO / config soft reference to one of these assets turns the rename into a prompt this run cannot answer."));
+        // which an unattended run answers with Cancel. A loaded CDO keeps the old path until the editor restarts.
+        TArray<FString> SourcePaths;
+        for (const FRenameJob& Job : Jobs)
+        {
+            SourcePaths.Add(Job.SourcePath);
+        }
+
+        UE_LOG(LogUAssetWorkbenchMigrator, Error, TEXT("RenameAssets failed for %s, nothing was written. Search the log for \"Message dialog closed\": a CDO / config soft reference to one of these assets turns the rename into a prompt this run cannot answer. Repoint the ini at the destination path, restart the editor, then re-run."), *FString::Join(SourcePaths, TEXT(", ")));
         return ToExitCode(EUAssetWorkbenchExitType::Failed);
     }
 

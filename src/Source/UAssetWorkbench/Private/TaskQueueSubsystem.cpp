@@ -344,6 +344,12 @@ void UAssetWorkbenchTaskQueueSubsystem::ProcessTaskFile(const FString& PendingPa
     else
     {
         Summary = FString::Printf(TEXT("%s failed%s"), *RunName, *Subject);
+
+        // The notification is often all that gets read, it has to say what went wrong.
+        if (!Report.GetFirstError().IsEmpty())
+        {
+            Summary = FString::Printf(TEXT("%s. %s"), *Summary, *Report.GetFirstError());
+        }
     }
 
     // A run can exit clean and still have warned about something worth reading.
@@ -393,6 +399,9 @@ int32 UAssetWorkbenchTaskQueueSubsystem::DispatchRun(const FString& RunName, con
     }
 
     UAssetWorkbench::FInternalDispatchScope DispatchScope;
+
+    // Queued runs keep commandlet semantics. An engine prompt would otherwise block the game thread with nobody to answer it.
+    TGuardValue<bool> UnattendedGuard(GIsRunningUnattendedScript, true);
     return Commandlet->Main(Params);
 }
 

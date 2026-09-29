@@ -733,6 +733,10 @@ void UAssetWorkbench::FRunReport::Serialize(const TCHAR* Message, ELogVerbosity:
     if (Severity == EMessageSeverity::Error)
     {
         ++m_ErrorCount;
+        if (m_FirstError.IsEmpty())
+        {
+            m_FirstError = Message;
+        }
     }
     else if (Severity == EMessageSeverity::Warning)
     {

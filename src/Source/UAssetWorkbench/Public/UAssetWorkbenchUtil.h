@@ -20,6 +20,7 @@ namespace UAssetWorkbench
 
         int32 GetWarningCount() const { return m_WarningCount; }
         int32 GetErrorCount() const { return m_ErrorCount; }
+        const FString& GetFirstError() const { return m_FirstError; }
 
         // Closing line on the page. Severity follows what the run actually reported.
         void Finish(const FString& Summary, bool bSuccess);
@@ -28,6 +29,7 @@ namespace UAssetWorkbench
         FString m_RunName;
         int32 m_WarningCount = 0;
         int32 m_ErrorCount = 0;
+        FString m_FirstError;
         bool m_bEmitting = false;
     };
 
