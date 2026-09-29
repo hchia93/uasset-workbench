@@ -245,7 +245,9 @@ Op: `Add` / `Delete` / `Reparent` / `Rename` / `Modify`，都用 `Name` 点名�
 
 把控件挪进它自己的子树是错误，检查在拆离之前跑。
 
-`Delete` 走引擎的 `DeleteWidgets`，动画绑定、属性绑定、图里的变量引用一并清理。
+`Delete` 走引擎的 `DeleteWidgets`，只清属性绑定和 Blueprint 声明的控件变量的 Get / Set 节点。widget animation 的绑定连同轨道留成 missing，指向原生 `BindWidget` / `BindWidgetOptional` 属性的 Get / Set 节点也留着。
+
+同位替换一个控件：新控件就位（`Add` 或 `Reparent`），每条动画一个 `WidgetAnimations` 的 `ReplaceBinding`，再 `Delete` 旧控件。三步能写在同一个 spec 里，`Widgets` 虽然先跑，`ReplaceBinding` 按名字从绑定表找旧绑定，不需要旧控件还在。原生 `BindWidget` 属性的 Get 节点走 `Graph` 改接或删掉。
 
 拆掉一个只包着单个子控件的容器：`Reparent` 子控件到容器的父级，再 `Delete` 容器，两个 op 写在同一个 spec 里。
 
@@ -288,7 +290,7 @@ target 不是 WidgetBlueprint 却带了 `Widgets` key 是错误。
 
 ### WidgetAnimations
 
-Op: `Add` / `Delete` / `Rename` / `SetPlaybackRange` / `AddTrack` / `DeleteTrack` / `SetKeys`。每条操作都要 `Animation` 点名动画。
+Op: `Add` / `Delete` / `Rename` / `SetPlaybackRange` / `AddTrack` / `DeleteTrack` / `ReplaceBinding` / `DeleteBinding` / `SetKeys`。每条操作都要 `Animation` 点名动画。
 
 动画是 Blueprint 变量，所以除 `SetKeys` 外的操作都会触发结构重编译。
 
@@ -300,6 +302,8 @@ Op: `Add` / `Delete` / `Rename` / `SetPlaybackRange` / `AddTrack` / `DeleteTrack
 | `SetPlaybackRange` | `Animation` / `StartTime` / `EndTime` | 秒 |
 | `AddTrack` | `Animation` / `BoundWidget` / `PropertyPath` | 轨道类由属性类型决定，控件没绑过会一并建绑定 |
 | `DeleteTrack` | `Animation` / `BoundWidget` | 多条轨道时用 `PropertyPath` 或 `TrackName` 点名 |
+| `ReplaceBinding` | `Animation` / `BoundWidget` / `NewWidget` | 绑定下的轨道全部挪到 `NewWidget`，旧绑定删掉 |
+| `DeleteBinding` | `Animation` / `BoundWidget` | 删绑定，连同它的轨道 |
 | `SetKeys` | `Animation` / `BoundWidget` / `Channel` / `Keys` | 整条通道替换 |
 
 #### AddTrack
@@ -324,6 +328,16 @@ Op: `Add` / `Delete` / `Rename` / `SetPlaybackRange` / `AddTrack` / `DeleteTrack
 | `FVector2D` / `FVector` / `FVector4` | `UMovieSceneFloatVectorTrack` |
 
 建轨道时连带建一个覆盖整个 playback range 的 section，所以建完就能直接 `SetKeys`。同一个控件的同一个属性已经有轨道时会报错，不会建第二条。
+
+#### ReplaceBinding / DeleteBinding
+
+`ReplaceBinding` 等同编辑器动画绑定右键菜单的 Replace with，轨道挪到 `NewWidget`，旧绑定连同 possessable 删掉。`DeleteBinding` 等同在时间轴上删掉一行绑定，绑定、possessable、轨道一起删。
+
+`BoundWidget` 按名字从动画的绑定表里找，不查控件树，所以控件已经删掉、编辑器里显示 missing 的绑定也找得到。
+
+`NewWidget` 必须在控件树里，填 Widget Blueprint 自己的名字表示根控件，与 `AddTrack` 同一套写法。它在该动画里已有绑定是错误，编辑器同样拒绝，先对它 `DeleteBinding`。
+
+只认控件级绑定，slot 绑定不在此列。一条 op 只改一条动画，控件出现在几条动画里就写几条。
 
 #### SetKeys
 

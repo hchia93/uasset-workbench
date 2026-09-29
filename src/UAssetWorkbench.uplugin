@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 20605,
-	"VersionName": "2.6.5",
+	"Version": 20606,
+	"VersionName": "2.6.6",
 	"FriendlyName": "UAsset Workbench",
 	"Description": "Headless uasset operations for scripts and AI agents: export asset structure to JSON, build assets from a JSON spec, edit Blueprints, widget animations, animations, textures, materials, DataTables and PCG graphs in place, migrate references after a rename, and audit levels, textures, materials and PCG.",
 	"Category": "Editor",

@@ -51,6 +51,8 @@
 | 改 widget animation 的关键帧数值或时间 | `EditBlueprint` 的 `WidgetAnimations` 的 `SetKeys` | Edit |
 | 从零给 widget 建一条动画，或删掉一条 | `EditBlueprint` 的 `WidgetAnimations` 的 `Add` / `Delete` | Edit |
 | 给动画加一条属性轨道，比如让某个控件的 RenderOpacity 能动 | `EditBlueprint` 的 `WidgetAnimations` 的 `AddTrack` | Edit |
+| 换掉一个控件，让动画轨道跟到新控件上（同位替换） | `EditBlueprint` 的 `WidgetAnimations` 的 `ReplaceBinding` | Edit |
+| 删掉动画里指向已删控件的残留绑定 | `EditBlueprint` 的 `WidgetAnimations` 的 `DeleteBinding` | Edit |
 | 给 AnimSequence / AnimMontage 加 notify，或改既有 notify 的时间、轨道、参数 | `EditAnimAsset` 的 `Notifies` | Edit |
 | 把 `AnimAssetExport` 导出的 notify 参数改完喂回资产 | `EditAnimAsset` | Edit |
 | 改 AnimSequence 的曲线关键帧或 sync marker | `EditAnimAsset` 的 `Curves` / `SyncMarkers` | Edit |
@@ -234,6 +236,7 @@ Audit。
 | 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
 | `WidgetLayoutImport` 退出码 1 但资产其实写进去了 | 引擎会改写 commandlet 的退出码。判断成败以日志里的 `Imported layout into ...` 为准，别只看退出码 |
 | 以为 `Delete` 一个面板只删它自己 | 面板还挂着子控件时默认拒绝并报出子控件名。确实要连子树一起删才加 `Recursive` |
+| 以为 `Widgets` 的 `Delete` 会清掉动画绑定 | 不清。动画绑定留成 missing，指向原生 `BindWidget` 属性的 Get 节点也留着。先 `ReplaceBinding` 或 `DeleteBinding`，Get 节点走 `Graph` |
 | 不知道 `AddTrack` 的 `PropertyPath` 填什么 | 先 `WidgetLayoutExport`，`Tracks[].PropertyPath` 原样抄。没有现成轨道时填属性名，嵌套属性用点号 |
 | `SetKeys` 的 `Channel` 填了轨道名 | 单通道轨道的通道名是 `None`，不是轨道名。多通道的形如 `Translation.X`，一律以导出里的 `Channels[].Name` 为准 |
 | 给同一个控件的同一个属性建两条轨道 | 会被拒绝。后建的轨道在运行时赢不过先建的，只会让导出多出一条看不出差别的轨道 |

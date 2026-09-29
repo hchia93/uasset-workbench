@@ -270,6 +270,32 @@ namespace
         return NewGuid;
     }
 
+    // Widget-level binding only. A slot binding animates the slot, not the widget, and keeps its own guid.
+    FGuid FindWidgetBinding(const UWidgetAnimation* Animation, const FString& BoundWidget)
+    {
+        for (const FWidgetAnimationBinding& Binding : Animation->AnimationBindings)
+        {
+            if (Binding.WidgetName.ToString() == BoundWidget && Binding.SlotWidgetName.IsNone())
+            {
+                return Binding.AnimationGuid;
+            }
+        }
+        return FGuid();
+    }
+
+    FString DescribeBindings(const UWidgetAnimation* Animation)
+    {
+        TArray<FString> Names;
+        for (const FWidgetAnimationBinding& Binding : Animation->AnimationBindings)
+        {
+            if (Binding.SlotWidgetName.IsNone())
+            {
+                Names.AddUnique(Binding.WidgetName.ToString());
+            }
+        }
+        return FString::Join(Names, TEXT(", "));
+    }
+
     FString DescribeChannels(const FMovieSceneChannelProxy& Proxy)
     {
         TArray<FString> Names;
@@ -404,9 +430,17 @@ namespace
                 {
                     bOk = ApplyDeleteTrack(Context, WidgetBP, AnimationName, Desc);
                 }
+                else if (Op == TEXT("ReplaceBinding"))
+                {
+                    bOk = ApplyReplaceBinding(Context, WidgetBP, AnimationName, Desc);
+                }
+                else if (Op == TEXT("DeleteBinding"))
+                {
+                    bOk = ApplyDeleteBinding(Context, WidgetBP, AnimationName, Desc);
+                }
                 else
                 {
-                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown animation Op '%s'. Accepted: Add, Delete, Rename, SetPlaybackRange, AddTrack, DeleteTrack, SetKeys"), *Context.AssetPath, *Op);
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown animation Op '%s'. Accepted: Add, Delete, Rename, SetPlaybackRange, AddTrack, DeleteTrack, ReplaceBinding, DeleteBinding, SetKeys"), *Context.AssetPath, *Op);
                     return false;
                 }
 
@@ -715,6 +749,105 @@ namespace
             }
 
             UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    deleted track '%s' on '%s'"), *RemovedName, *BoundWidget);
+            return true;
+        }
+
+        // Mirrors the editor's "Replace with <Widget>" (FWidgetBlueprintEditor::ReplaceTrackWithWidgets). BoundWidget
+        // is resolved through the binding table, so the old widget may already be gone from the tree.
+        bool ApplyReplaceBinding(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation || !Animation->GetMovieScene())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            FString BoundWidget;
+            FString NewWidget;
+            if (!Desc->TryGetStringField(TEXT("BoundWidget"), BoundWidget) || !Desc->TryGetStringField(TEXT("NewWidget"), NewWidget))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation ReplaceBinding needs BoundWidget and NewWidget"), *Context.AssetPath);
+                return false;
+            }
+
+            const FGuid OldGuid = FindWidgetBinding(Animation, BoundWidget);
+            if (!OldGuid.IsValid())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' has no binding for '%s'. Bound: %s"), *Context.AssetPath, *AnimationName, *BoundWidget, *DescribeBindings(Animation));
+                return false;
+            }
+
+            const bool bIsRootWidget = NewWidget == WidgetBP->GetName();
+            UWidget* Widget = bIsRootWidget ? nullptr : FindWidget(WidgetBP, NewWidget);
+            if (!bIsRootWidget && !Widget)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no widget named '%s'. Asset has: %s"), *Context.AssetPath, *NewWidget, *DescribeWidgets(WidgetBP));
+                return false;
+            }
+
+            // The editor refuses too. Two bindings on one widget let the later one silently override the earlier.
+            if (FindWidgetBinding(Animation, NewWidget).IsValid())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' is already bound in '%s'. DeleteBinding it first"), *Context.AssetPath, *NewWidget, *AnimationName);
+                return false;
+            }
+
+            UMovieScene* MovieScene = Animation->GetMovieScene();
+            Animation->Modify();
+            MovieScene->Modify();
+
+            Animation->AnimationBindings.RemoveAll([&OldGuid](const FWidgetAnimationBinding& Binding)
+            {
+                return Binding.AnimationGuid == OldGuid;
+            });
+
+            const FGuid NewGuid = FindOrAddBinding(Animation, WidgetBP, Widget, bIsRootWidget);
+            MovieScene->MoveBindingContents(OldGuid, NewGuid);
+            MovieScene->RemovePossessable(OldGuid);
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    rebound '%s' to '%s'"), *BoundWidget, *NewWidget);
+            return true;
+        }
+
+        // Mirrors deleting a binding row in the animation timeline. Its tracks go with it.
+        bool ApplyDeleteBinding(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& AnimationName, const TSharedPtr<FJsonObject>& Desc) const
+        {
+            UWidgetAnimation* Animation = FindAnimation(WidgetBP, AnimationName);
+            if (!Animation || !Animation->GetMovieScene())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: no animation named '%s'. Asset has: %s"), *Context.AssetPath, *AnimationName, *DescribeAnimations(WidgetBP));
+                return false;
+            }
+
+            FString BoundWidget;
+            if (!Desc->TryGetStringField(TEXT("BoundWidget"), BoundWidget))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: animation DeleteBinding needs BoundWidget"), *Context.AssetPath);
+                return false;
+            }
+
+            const FGuid Guid = FindWidgetBinding(Animation, BoundWidget);
+            if (!Guid.IsValid())
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' has no binding for '%s'. Bound: %s"), *Context.AssetPath, *AnimationName, *BoundWidget, *DescribeBindings(Animation));
+                return false;
+            }
+
+            TArray<UMovieSceneTrack*> Tracks;
+            CollectTracksForWidget(Animation, BoundWidget, Tracks);
+
+            UMovieScene* MovieScene = Animation->GetMovieScene();
+            Animation->Modify();
+            MovieScene->Modify();
+
+            Animation->AnimationBindings.RemoveAll([&Guid](const FWidgetAnimationBinding& Binding)
+            {
+                return Binding.AnimationGuid == Guid;
+            });
+            MovieScene->RemovePossessable(Guid);
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("    deleted binding '%s' with %d track(s)"), *BoundWidget, Tracks.Num());
             return true;
         }
 
