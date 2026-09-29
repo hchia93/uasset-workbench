@@ -1,6 +1,6 @@
 # UAsset Workbench
 
-Unreal Engine 5 Editor-only plugin，版本 2.5.4。让脚本与 AI agent 能对 uasset 做非交互操作，五组能力 Export / Import / Edit / Migrate / Audit。
+Unreal Engine 5 Editor-only plugin，让脚本与 AI agent 能对 uasset 做非交互操作，五组能力 Export / Import / Edit / Migrate / Audit。
 
 ## 项目结构
 
@@ -13,12 +13,15 @@ src/                                  UE5 插件，复制到 Plugins/ 即可使�
     │                                 共享层（Module / Util / Version / QueueSubsystem）在两者根部
     └── UAssetWorkbench.Build.cs
 Docs/                                 给 AI agent 读的中文文档，六份
+assets/                               README 用图
+Version.md                            版本更新记录
 ```
 
 ## 版本管理
 
 版本号定义在 `src/Source/UAssetWorkbench/Public/UAssetWorkbenchVersion.h`。
 修改版本时同步更新 `.uplugin` 的 `Version` 和 `VersionName` 字段。
+每次升版本同时在 `Version.md` 顶部新增该版本的一节（`### <version>`）。
 
 ## 代码规范
 
@@ -54,4 +57,4 @@ run 名后缀 `Export` 进 Export 组，后缀 `Import` 与前缀 `Create` 进 I
 4. `Main()` 开头打印版本号，返回值走 `ToExitCode(EUAssetWorkbenchExitType::...)`
 5. Export 组输出路径统一 `Intermediate/UAssetExport/`，JSON 必须包含 `ExporterVersion` 和 `ExportType` 字段
 6. 如需新的 Engine module 依赖，添加到 `Build.cs`；如需引擎插件依赖，同步添加到 `.uplugin` 的 `Plugins` 数组
-7. 更新 `README.md` 与 `README_CN.md` 的对应组表格，以及 `Docs/` 的对应文件
+7. 更新对应的 `Docs/<组>.md` 和 `Docs/AI-Guide.md` 的决策表，覆盖新资产类型时更新 README「支持的资产」矩阵，并在 `Version.md` 加一条记录

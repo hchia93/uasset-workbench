@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 470" width="800" height="470" role="img" aria-labelledby="t">
+<title id="t">Export, Import, Edit, Migrate, Audit form a loop around the uasset</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8B949E"/></marker></defs>
+<path d="M506.6,78.5 A262,168 0 0 1 614.6,135.6" fill="none" stroke="#8B949E" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M661.8,224.7 A262,168 0 0 1 619.7,323.5" fill="none" stroke="#8B949E" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M447.7,397.2 A262,168 0 0 1 352.3,397.2" fill="none" stroke="#8B949E" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M180.3,323.5 A262,168 0 0 1 138.2,224.7" fill="none" stroke="#8B949E" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M185.4,135.6 A262,168 0 0 1 293.4,78.5" fill="none" stroke="#8B949E" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="400" y="242" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="30" font-weight="600" fill="#8B949E">.uasset</text>
+<rect x="306.0" y="32.0" width="188" height="64" rx="12" fill="#0969DA"/>
+<text x="400.0" y="60.0" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Export</text>
+<text x="400.0" y="83.0" text-anchor="middle" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="13" fill="#FFFFFF" fill-opacity="0.9">uasset → JSON</text>
+<rect x="555.2" y="148.1" width="188" height="64" rx="12" fill="#9A6700"/>
+<text x="649.2" y="176.1" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Import</text>
+<text x="649.2" y="199.1" text-anchor="middle" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="13" fill="#FFFFFF" fill-opacity="0.9">spec → new asset</text>
+<rect x="460.0" y="335.9" width="188" height="64" rx="12" fill="#9A6700"/>
+<text x="554.0" y="363.9" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Edit</text>
+<text x="554.0" y="386.9" text-anchor="middle" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="13" fill="#FFFFFF" fill-opacity="0.9">spec → in-place edit</text>
+<rect x="152.0" y="335.9" width="188" height="64" rx="12" fill="#9A6700"/>
+<text x="246.0" y="363.9" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Migrate</text>
+<text x="246.0" y="386.9" text-anchor="middle" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="13" fill="#FFFFFF" fill-opacity="0.9">rename → refs fixed</text>
+<rect x="56.8" y="148.1" width="188" height="64" rx="12" fill="#0969DA"/>
+<text x="150.8" y="176.1" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#FFFFFF">Audit</text>
+<text x="150.8" y="199.1" text-anchor="middle" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="13" fill="#FFFFFF" fill-opacity="0.9">uasset → report</text>
+<rect x="262" y="436" width="16" height="16" rx="4" fill="#0969DA"/>
+<text x="286" y="449" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" fill="#8B949E">read-only</text>
+<rect x="400" y="436" width="16" height="16" rx="4" fill="#9A6700"/>
+<text x="424" y="449" font-family="Segoe UI, -apple-system, Helvetica, Arial, sans-serif" font-size="15" fill="#8B949E">writes assets</text>
+</svg>
