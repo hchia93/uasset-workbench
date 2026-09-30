@@ -189,6 +189,8 @@ EOF
 
     echo "[run_commandlet] queued task $uuid via in-editor subsystem" >&2
 
+    # Giving up withdraws a task still in pending/, the next editor launch would run it with nobody waiting.
+    # One already claimed into processing/ belongs to the editor and stays.
     local start_ts now
     start_ts=$(date +%s)
     while true; do
@@ -198,6 +200,7 @@ EOF
         now=$(date +%s)
         if [ $((now - start_ts)) -gt "$MAX_SEC" ]; then
             echo "[run_commandlet] queue task $uuid timed out after ${MAX_SEC}s" >&2
+            rm -f "$pending_path"
             return 1
         fi
         if ! is_heartbeat_fresh; then
@@ -206,6 +209,7 @@ EOF
                 break
             fi
             echo "[run_commandlet] heartbeat went stale while waiting on $uuid" >&2
+            rm -f "$pending_path"
             return 1
         fi
         sleep 1

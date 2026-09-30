@@ -9,6 +9,7 @@
 #include "DirectoryWatcherModule.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Editor.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -115,6 +116,30 @@ void UAssetWorkbenchTaskQueueSubsystem::Initialize(FSubsystemCollectionBase& Col
         FTickerDelegate::CreateUObject(this, &UAssetWorkbenchTaskQueueSubsystem::HeartbeatTick),
         UAssetWorkbenchTaskQueue::HeartbeatIntervalSeconds);
 
+    // A task run before the level editor exists trips engine ensures and once crashed the editor, so intake
+    // waits for editor startup to finish. The heartbeat is already up, a wrapper queuing meanwhile just waits.
+    if (GIsRunning)
+    {
+        // Created after startup, the broadcast has already gone out.
+        StartQueueIntake();
+    }
+    else
+    {
+        m_EditorInitializedHandle = FEditorDelegates::OnEditorInitialized.AddUObject(this, &UAssetWorkbenchTaskQueueSubsystem::HandleEditorInitialized);
+    }
+}
+
+void UAssetWorkbenchTaskQueueSubsystem::HandleEditorInitialized(double StartupSeconds)
+{
+    FEditorDelegates::OnEditorInitialized.Remove(m_EditorInitializedHandle);
+    m_EditorInitializedHandle.Reset();
+    StartQueueIntake();
+}
+
+void UAssetWorkbenchTaskQueueSubsystem::StartQueueIntake()
+{
+    SweepStaleProcessing();
+
     m_WatchedDirectory = GetPendingDir();
     FDirectoryWatcherModule& WatcherModule = FModuleManager::LoadModuleChecked<FDirectoryWatcherModule>(TEXT("DirectoryWatcher"));
     if (IDirectoryWatcher* Watcher = WatcherModule.Get())
@@ -132,6 +157,12 @@ void UAssetWorkbenchTaskQueueSubsystem::Initialize(FSubsystemCollectionBase& Col
 
 void UAssetWorkbenchTaskQueueSubsystem::Deinitialize()
 {
+    if (m_EditorInitializedHandle.IsValid())
+    {
+        FEditorDelegates::OnEditorInitialized.Remove(m_EditorInitializedHandle);
+        m_EditorInitializedHandle.Reset();
+    }
+
     if (m_HeartbeatHandle.IsValid())
     {
         FTSTicker::GetCoreTicker().RemoveTicker(m_HeartbeatHandle);
@@ -163,6 +194,29 @@ void UAssetWorkbenchTaskQueueSubsystem::InitializeQueueDirectories() const
     FileManager.MakeDirectory(*GetPendingDir(), true);
     FileManager.MakeDirectory(*GetProcessingDir(), true);
     FileManager.MakeDirectory(*GetDoneDir(), true);
+}
+
+void UAssetWorkbenchTaskQueueSubsystem::SweepStaleProcessing() const
+{
+    // A run finishes inside one game thread call, so a file left here is from an editor that died mid run and
+    // rerunning it could take this one down too. Another live editor mid run only loses this bookkeeping copy.
+    TArray<FString> StaleFiles;
+    IFileManager::Get().FindFiles(StaleFiles, *FPaths::Combine(GetProcessingDir(), TEXT("*.json")), true, false);
+
+    for (const FString& FileName : StaleFiles)
+    {
+        const FString StalePath = FPaths::Combine(GetProcessingDir(), FileName);
+
+        FString RunName;
+        TSharedPtr<FJsonObject> Task;
+        if (LoadJsonObjectFromFile(StalePath, Task))
+        {
+            Task->TryGetStringField(UAssetWorkbenchTaskQueue::FieldRunName, RunName);
+        }
+
+        UE_LOG(LogUAssetWorkbenchCore, Warning, TEXT("Dropped task %s (%s) left in processing/ by an editor that exited mid run"), *FileName, RunName.IsEmpty() ? TEXT("unknown run") : *RunName);
+        IFileManager::Get().Delete(*StalePath);
+    }
 }
 
 void UAssetWorkbenchTaskQueueSubsystem::TouchHeartbeat() const

@@ -54,6 +54,9 @@ namespace UAssetWorkbench
     // An instanced object, or an array of them, takes {"Class", "Properties"} per instance instead.
     int32 ApplyProperties(UObject* Target, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);
 
+    // Reads back what a property path holds, in the exporter's text format. Empty when the path does not resolve.
+    FString ReadPropertyPathText(UObject* Target, const FString& Path);
+
     // Same path syntax rooted at a bare struct instance, which is how a DataTable row is reached.
     // Owner only resolves object references inside a literal, it is not written to.
     int32 ApplyStructProperties(UStruct* Struct, void* Base, UObject* Owner, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);

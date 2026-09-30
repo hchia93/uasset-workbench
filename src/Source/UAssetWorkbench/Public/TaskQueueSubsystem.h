@@ -30,6 +30,10 @@ private:
     void TouchHeartbeat() const;
     bool HeartbeatTick(float DeltaTime);
 
+    void HandleEditorInitialized(double StartupSeconds);
+    void StartQueueIntake();
+    void SweepStaleProcessing() const;
+
     void OnPendingDirectoryChanged(const TArray<FFileChangeData>& FileChanges);
     void ScanPendingDirectory();
     void ProcessTaskFile(const FString& PendingPath);
@@ -44,6 +48,7 @@ private:
     static void FinishToast(TSharedPtr<SNotificationItem> Item, bool bSuccess, const FString& Summary);
 
     FTSTicker::FDelegateHandle m_HeartbeatHandle;
+    FDelegateHandle m_EditorInitializedHandle;
     FDelegateHandle m_DirectoryWatcherHandle;
     FString m_WatchedDirectory;
     bool m_bProcessing = false;

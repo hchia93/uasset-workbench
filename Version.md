@@ -4,6 +4,14 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.6.7
+
+- 新增 `EditLevel`，按编辑器 label 找到关卡里摆放的 actor 写属性，路径能穿过数组、struct 与 instanced 子对象，Python 写不进去的 inline 对象 `EditInstanceOnly` 属性也收
+- 编辑器内队列等编辑器启动完成才接任务，启动前就排进来的任务不再在引擎初始化途中执行
+- 启动时丢弃崩溃编辑器留在 `processing/` 的任务，不再重跑
+- `run_commandlet.sh` 超时或 heartbeat 过期放弃等待时，撤回还在 `pending/` 的任务
+- AI-Guide 补上关编辑器后 15 秒内调 wrapper 的陷阱
+
 ### 2.6.6
 
 - `EditBlueprint` 的 `WidgetAnimations` 新增 `ReplaceBinding` / `DeleteBinding`，对应编辑器动画绑定的右键菜单，按名字从绑定表寻址，控件已删、显示 missing 的绑定也找得到

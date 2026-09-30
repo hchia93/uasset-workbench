@@ -343,6 +343,21 @@ int32 UAssetWorkbench::ApplyProperties(UObject* Target, const TSharedPtr<FJsonOb
     return ApplyStructProperties(Target->GetClass(), Target, Target, Properties, OutFailures);
 }
 
+FString UAssetWorkbench::ReadPropertyPathText(UObject* Target, const FString& Path)
+{
+    FProperty* Property = nullptr;
+    void* Address = nullptr;
+    UObject* Owner = nullptr;
+    if (!Target || !ResolvePropertyPath(Target->GetClass(), Target, Target, Path, Property, Address, Owner))
+    {
+        return FString();
+    }
+
+    FString Value;
+    Property->ExportTextItem_Direct(Value, Address, nullptr, Owner, PPF_None);
+    return Value;
+}
+
 int32 UAssetWorkbench::ApplyStructProperties(UStruct* Struct, void* Base, UObject* Owner, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures)
 {
     int32 Written = 0;

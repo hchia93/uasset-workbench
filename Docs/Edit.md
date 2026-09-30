@@ -11,6 +11,7 @@
 | `EditTextureAsset` | Texture2D 的构建设置 |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 |
 | `EditDataTable` | DataTable 既有行的属性值 |
+| `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
 | `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
 
 ## EditBlueprint
@@ -1136,6 +1137,60 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 只改既有行，行名不存在是错误。
 
 落盘前调 `HandleDataTableChanged`，不然编辑器里要重新加载才看得到新值。
+
+## EditLevel
+
+用途: 按 spec 往关卡里已摆放的 actor 写属性，actor 按编辑器里的 label 寻址。属性路径能穿过数组、struct 与 instanced 子对象，所以 actor 身上 inline 对象的 `EditInstanceOnly` 属性也写得进去，Python 的 `set_editor_property` 对这类属性一律拒写。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh     "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject"     EditLevel "" 10 600 "-spec=C:/path/spec.json -apply"
+```
+
+无 `-apply` 是 dry run，规则与 `EditBlueprint` 一致：改动靠进程退出丢弃，编辑器开着走 queue 通道时直接退 2。AssetList 传空字符串，target 写在 spec 里。
+
+### Spec
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/Maps/Sublevels/L_Arena",
+      "Actors": [
+        { "Label": "BP_BossFightSequencer",
+          "Properties": {
+            "IntroSteps[2].bReleasePlayerOnFinish": "False",
+            "IntroSteps[3].Target": "/Game/Maps/Sublevels/L_Arena.L_Arena:PersistentLevel.BP_ScriptedCamera_C_0"
+          } }
+      ]
+    }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `AssetPath` | 是 | 关卡路径，包路径或完整对象路径都收 |
+| `Actors` | 是 | actor 操作数组 |
+| `Label` | 是 | 编辑器里的 actor label，必须恰好命中一个 |
+| `Properties` | 是 | 属性路径到值，路径语法与 `EditBlueprint` 那组的 writer 一致 |
+
+只看关卡包自己的 `PersistentLevel`。sublevel 是独立的关卡包，各自写一个 target。One File Per Actor 的 actor 不在关卡包里，找不到。
+
+没有 `PostEditChange`，靠 `PostEditChangeProperty` 联动算出来的值不会跟着更新。
+
+### 日志
+
+每个 actor 每个属性打一行 `关卡 label 路径: 改前 -> 改后`，值按属性路径回读。
+
+### 退出码
+
+| 码 | 含义 |
+| --- | --- |
+| 0 | 成功 |
+| 1 | 参数错误、spec 读不了、关卡 load 不到、label 没命中或不唯一、属性路径解析不了 |
+| 2 | 编辑器在运行且直接起了 commandlet，或在编辑器里跑 dry run |
 
 ## EditPCGGraph
 

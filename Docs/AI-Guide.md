@@ -60,6 +60,7 @@
 | 改贴图的 LOD group、压缩格式、sRGB、mip、尺寸上限 | `EditTextureAsset` | Edit |
 | 改材质的 usage flag、BlendMode、ShadingModel，或 MI 的 parent 与参数覆写 | `EditMaterialAsset` | Edit |
 | 改 DataTable 既有行的属性值 | `EditDataTable` | Edit |
+| 改关卡里某个 actor 的属性，包括它 instanced 子对象上 Python 写不进去的 `EditInstanceOnly` | `EditLevel` | Edit |
 | 给 PCG graph 加删节点、接断连线、改节点属性、改图参数、排版 | `EditPCGGraph` | Edit |
 | C++ 改名后 BP 事件不再触发 | `RedirectBlueprintEvent` | Migrate |
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
@@ -224,6 +225,7 @@ Audit。
 | 坑 | 处理 |
 | --- | --- |
 | 编辑器开着时直接起 commandlet | 一律走 wrapper。commandlet 检测到活的 heartbeat 会退出码 2 自保 |
+| 刚关编辑器 15 秒内调 wrapper | heartbeat 还算新鲜，任务先进队列，等到 heartbeat 过期 wrapper 撤回任务并退 1。关编辑器后等 15 秒再调 |
 | 按映像名杀编辑器，`taskkill /IM UnrealEditor.exe` 或 `Stop-Process -Name UnrealEditor` | 会连带杀掉本机其他 agent 的编辑器。只关自己起的，走 `editor_session.py` 的 `close` / `release` |
 | 在 `EXTRA_ARGS` 里写 `-assets=` | 入口资产只走位置参数 `AssetList`。wrapper 由它生成 `-assets`，queue 路径由任务 json 的 `Assets` 数组构造，两边在 `AssetList` 为空时都不发这个 flag |
 | 导出的 JSON 可能上万行 | 先 grep 定位再按行号区间读，不要整份读进上下文 |

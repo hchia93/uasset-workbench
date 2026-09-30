@@ -49,7 +49,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | Texture | ✓ | | ✓ | | ✓ |
 | Niagara System | ✓ | | | | |
 | Behavior Tree | ✓ | | | | |
-| Level | ✓ | | | ✓ | ✓ |
+| Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |
 | Any asset | | ✓ | | ✓ | |
 

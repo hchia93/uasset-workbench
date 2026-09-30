@@ -49,7 +49,7 @@
 | Texture | ✓ | | ✓ | | ✓ |
 | Niagara System | ✓ | | | | |
 | Behavior Tree | ✓ | | | | |
-| Level | ✓ | | | ✓ | ✓ |
+| Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |
 | 任意资产 | | ✓ | | ✓ | |
 
