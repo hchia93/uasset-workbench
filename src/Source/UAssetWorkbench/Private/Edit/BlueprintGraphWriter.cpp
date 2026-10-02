@@ -25,11 +25,13 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Features/IModularFeatures.h"
 #include "IPropertyAccessEditor.h"
+#include "K2Node_AddDelegate.h"
 #include "K2Node_AnimGetter.h"
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallParentFunction.h"
 #include "K2Node_ConstructObjectFromClass.h"
+#include "K2Node_CreateDelegate.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
@@ -124,6 +126,21 @@ namespace
         for (TFieldIterator<UFunction> It(SearchClass); It; ++It)
         {
             if (UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(*It))
+            {
+                Names.AddUnique(It->GetName());
+            }
+        }
+
+        Names.Sort();
+        return FString::Join(Names, TEXT(", "));
+    }
+
+    FString DescribeAssignableDelegates(UClass* OwnerClass)
+    {
+        TArray<FString> Names;
+        for (TFieldIterator<FMulticastDelegateProperty> It(OwnerClass); It; ++It)
+        {
+            if (It->HasAnyPropertyFlags(CPF_BlueprintAssignable))
             {
                 Names.AddUnique(It->GetName());
             }
@@ -1550,6 +1567,62 @@ namespace
                 UK2Node_Event* Node = NewObject<UK2Node_Event>(Graph);
                 Node->EventReference.SetExternalMember(Signature->GetFName(), SignatureClass);
                 Node->bOverrideFunction = true;
+                Result = Node;
+            }
+            else if (Type == TEXT("AddDelegate"))
+            {
+                FString DelegateName;
+                if (!Desc->TryGetStringField(TEXT("Delegate"), DelegateName))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("AddDelegate needs a Delegate"));
+                    return nullptr;
+                }
+
+                UClass* OwnerClass = Blueprint->SkeletonGeneratedClass;
+                FString ClassPath;
+                if (Desc->TryGetStringField(TEXT("Class"), ClassPath))
+                {
+                    OwnerClass = ResolveClassPath(ClassPath);
+                    if (!OwnerClass)
+                    {
+                        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("AddDelegate: cannot resolve Class '%s'"), *ClassPath);
+                        return nullptr;
+                    }
+                }
+
+                const FMulticastDelegateProperty* Property = FindFProperty<FMulticastDelegateProperty>(OwnerClass, FName(*DelegateName));
+                if (!Property || !Property->HasAnyPropertyFlags(CPF_BlueprintAssignable))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("AddDelegate: '%s' has no BlueprintAssignable delegate '%s'. Delegates: %s"), *GetNameSafe(OwnerClass), *DelegateName, *DescribeAssignableDelegates(OwnerClass));
+                    return nullptr;
+                }
+
+                // A delegate outside the Blueprint's own hierarchy binds through the self pin, which takes the owning object.
+                const bool bSelfContext = Blueprint->SkeletonGeneratedClass && Blueprint->SkeletonGeneratedClass->IsChildOf(Property->GetOwnerClass());
+
+                UK2Node_AddDelegate* Node = NewObject<UK2Node_AddDelegate>(Graph);
+                Node->SetFromProperty(Property, bSelfContext, Property->GetOwnerClass());
+                Result = Node;
+            }
+            else if (Type == TEXT("CreateDelegate"))
+            {
+                FString FunctionName;
+                if (!Desc->TryGetStringField(TEXT("Function"), FunctionName))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("CreateDelegate needs a Function"));
+                    return nullptr;
+                }
+
+                UClass* SkeletonClass = Blueprint->SkeletonGeneratedClass;
+                if (!SkeletonClass || !SkeletonClass->FindFunctionByName(FName(*FunctionName)))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("CreateDelegate: %s has no function '%s'"), *Blueprint->GetName(), *FunctionName);
+                    return nullptr;
+                }
+
+                // Any reconstruct before the delegate pin is linked fails validation and clears the function name.
+                UK2Node_CreateDelegate* Node = NewObject<UK2Node_CreateDelegate>(Graph);
+                Node->SetFunction(FName(*FunctionName));
                 Result = Node;
             }
             else if (Type == TEXT("DynamicCast"))

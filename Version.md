@@ -4,6 +4,10 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.6.8
+
+- `EditBlueprint` 的 `Graph` 新增 `AddDelegate` / `CreateDelegate`，对应编辑器的 Bind Event to 与 Create Event，绑定 `BlueprintAssignable` 委托
+
 ### 2.6.7
 
 - 新增 `EditLevel`，按编辑器 label 找到关卡里摆放的 actor 写属性，路径能穿过数组、struct 与 instanced 子对象，Python 写不进去的 inline 对象 `EditInstanceOnly` 属性也收

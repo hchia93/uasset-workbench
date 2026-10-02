@@ -434,6 +434,8 @@ BP 自己声明的组件属性挂在 SCS node 的 template 上，继承来的 na
 | `VariableGet` / `VariableSet` | `Variable` | |
 | `Event` | `EventName`, `Class` | override 父类或原生事件，`Class` 默认取 BP 的父类。同一事件已经实现是错误，报错列出可 override 的事件名 |
 | `CustomEvent` | `EventName` | |
+| `AddDelegate` | `Delegate`, `Class` | Bind Event to。`Class` 是委托所在的类，默认本 BP，只认 `BlueprintAssignable` 委托。委托不在本 BP 继承链上时，`self` pin 接持有它的对象 |
+| `CreateDelegate` | `Function` | Create Event，`Function` 是本 BP 的函数 |
 | `Branch` / `MultiGate` / `Self` / `Knot` | 无 | `Knot` 是 reroute |
 | `Sequence` | `OutputCount` | |
 | `Select` | `Enum` 或 `OptionCount` | |
@@ -452,6 +454,8 @@ BP 自己声明的组件属性挂在 SCS node 的 template 上，继承来的 na
 带 `MD_NativeMakeFunction` 的结构体（`FVector` / `FRotator` / `FTransform` 等）编译时会被引擎换成对应的 `Make X` / `Break X` 函数调用节点，pin 默认值与连线一并搬过去，导出里看到的是 `K2Node_CallFunction`。
 
 `Timeline` 同时建出 `UTimelineTemplate`，轨道不在范围内，要加轨道另走 Details 面板。
+
+`CreateDelegate` 的 `OutputDelegate` 要在同一个 spec 的 `Links` 里接到 `AddDelegate` 的 `Delegate` pin。连上之前节点一旦重建就会清掉函数名，所以不要对它写 `NodeProperties`。签名在编译时校验，对不上报 Signature Error。
 
 节点注释与启用状态没有专门的 op，走 `NodeProperties` 写 `NodeComment` 与 `EnabledState`（`Enabled` / `Disabled` / `DevelopmentOnly`）。
 
