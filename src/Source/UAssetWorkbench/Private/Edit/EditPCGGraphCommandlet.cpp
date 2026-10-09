@@ -93,9 +93,10 @@ int32 UEditPCGGraphCommandlet::Main(const FString& Params)
     for (const TSharedPtr<FJsonValue>& Value : *Targets)
     {
         const TSharedPtr<FJsonObject>& Entry = Value->AsObject();
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!Entry.IsValid() || !ApplyTarget(Entry, Touched, Ops))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Target failed, nothing saved"));
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditPCGGraph"), UAssetWorkbench::DescribeSpecTarget(Entry), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }
@@ -111,9 +112,10 @@ int32 UEditPCGGraphCommandlet::Main(const FString& Params)
         // A graph has no compile step, but an open PCG editor mirrors the runtime model and only rebuilds
         // its view on a graph change broadcast.
         Graph->ForceNotificationForEditor();
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!UAssetWorkbench::CompileAndSavePackage(Graph, /* bCompileBlueprint */ false))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Failed to save package for %s"), *Graph->GetPathName());
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditPCGGraph"), Graph->GetPathName(), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }

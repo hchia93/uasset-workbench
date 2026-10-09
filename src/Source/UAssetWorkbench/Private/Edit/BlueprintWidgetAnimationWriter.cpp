@@ -644,7 +644,7 @@ namespace
             const FGuid ObjectGuid = FindOrAddBinding(Animation, WidgetBP, Widget, bIsRootWidget);
 
             // A second track for the same property would keep the first one's keys and silently lose to it.
-            for (const FMovieSceneBinding& Binding : MovieScene->GetBindings())
+            for (const FMovieSceneBinding& Binding : AsConst(*MovieScene).GetBindings())
             {
                 if (Binding.GetObjectGuid() != ObjectGuid)
                 {

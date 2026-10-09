@@ -55,7 +55,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 
 </div>
 
-Any asset: `CreateAsset` creates from a spec, `RenameAsset` / `DuplicateAsset` / `ResaveAsset` rename, duplicate, resave
+Any asset: `CreateAsset` creates from a spec, `RenameAsset` / `DuplicateAsset` / `ResaveAsset` rename, duplicate, resave, `FixupRedirector` fixes up redirectors, `ResaveRedirectedAsset` resaves what still imports a CoreRedirect old name
 
 RunName per cell: decision table in [Docs/AI-Guide.md](Docs/AI-Guide.md)
 

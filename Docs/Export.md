@@ -453,6 +453,8 @@ Montage 没有 sync marker，那是 sequence 独有的。
 | `Animations[]` | 见下 |
 | `Graphs[]` | EdGraph，形状见 [EdGraph 通用形状](#edgraph-通用形状) |
 
+struct 属性写出全部字段，零值也写，形如 `Offsets=(Left=0.000000,Top=0.000000,Right=0.000000,Bottom=0.000000)`。导出喂回 `WidgetLayoutImport` 时零值照样落盘。
+
 `Animations[]` 每项。
 
 | 字段 | 含义 |

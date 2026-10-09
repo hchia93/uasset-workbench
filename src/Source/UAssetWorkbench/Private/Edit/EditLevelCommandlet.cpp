@@ -114,9 +114,10 @@ int32 UEditLevelCommandlet::Main(const FString& Params)
     for (const TSharedPtr<FJsonValue>& Value : *Targets)
     {
         const TSharedPtr<FJsonObject>& Entry = Value->AsObject();
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!Entry.IsValid() || !ApplyTarget(Entry, Touched, Ops))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Target failed, nothing saved"));
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditLevel"), UAssetWorkbench::DescribeSpecTarget(Entry), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }
@@ -129,9 +130,10 @@ int32 UEditLevelCommandlet::Main(const FString& Params)
 
     for (UWorld* World : Touched)
     {
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!UAssetWorkbench::CompileAndSavePackage(World, false))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Failed to save package for %s"), *World->GetPathName());
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditLevel"), World->GetPathName(), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }

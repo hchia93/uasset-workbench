@@ -143,9 +143,10 @@ int32 UEditTextureAssetCommandlet::Main(const FString& Params)
     for (const TSharedPtr<FJsonValue>& Value : *Targets)
     {
         const TSharedPtr<FJsonObject>& Entry = Value->AsObject();
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!Entry.IsValid() || !ApplyTarget(Entry, bApply, Touched, Ops))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Target failed, nothing saved"));
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditTextureAsset"), UAssetWorkbench::DescribeSpecTarget(Entry), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }
@@ -158,9 +159,10 @@ int32 UEditTextureAssetCommandlet::Main(const FString& Params)
 
     for (UTexture* Texture : Touched)
     {
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!UAssetWorkbench::CompileAndSavePackage(Texture, false))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Failed to save package for %s"), *Texture->GetPathName());
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditTextureAsset"), Texture->GetPathName(), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }

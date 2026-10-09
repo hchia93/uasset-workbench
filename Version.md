@@ -4,6 +4,31 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.6.9
+
+- 新增 `FixupRedirector`，重存 redirector 的每个引用方让它直接指向目标，再删掉没人引用的 redirector。收 redirector 包或目录，不弹引擎的报告窗，编辑器内队列里能跑
+- 新增 `ResaveRedirectedAsset`，按项目 `DefaultEngine.ini` 的 `[CoreRedirects]` 读包头，找出还引用旧名的包并 resave，map 的 external actor / object 包一并扫，撤 redirect 之前用
+- `RenameAsset` 接受目录，展开成目录下逐个资产的 pair，相对路径保留在目标目录下
+- `RenameAsset` 失败时输出 `RenameAsset failed for <资产>. Reason: <原因>`，原因取自被自动取消的确认框文本，没有就取插件记下的第一条 error
+- 修复 `RenameAsset` 在编辑器内队列里修 redirector 时报告窗断言崩溃，改用 `FixupRedirector` 同一份代码，不必再加 `-keepredirectors` 绕开
+- `RenameAsset` 带 `-keepredirectors` 时，经 redirector 到达资产的引用方记成 `through the redirector`，以 Warning 收尾并退 0，不再报成引用丢失
+- 修复 `RenameAsset` 把引用方里没有对象在用的残留 import 误报成引用丢失，同一批资产移动后的误报即此。这类 import 改名前单独记出，不进引用核对
+- `RenameAsset` 独立进程路径改名前先同步扫一遍 asset registry
+- `Edit*` 失败输出 `<RunName> failed for <资产>. Reason: <原因>`，替换原来的 `Target failed, nothing saved`，与 `RenameAsset` 同一格式。queue 路径的摘要、toast 与 done 文件的 `Error` 字段列出失败的资产与第一条 error
+- 修复 `EditBlueprint` 的 `Widgets` `Add` 带 `AsRoot` 时已有根控件连同整棵子树被静默丢弃，改为报错，目标位置在建控件之前校验，被拒的 `Add` 不留任何东西
+- `Widgets` 的 `Reparent` 带 `AsRoot` 只放行拆包，即旧根是只包着该控件的面板。旧根走编辑器的删除路径，修复旧根 GUID 残留触发 `was deleted but still has a GUID` ensure
+- 修复 `Reparent` 带 `AsRoot` 拆包时骨架编译把挪上来的子树清掉，改为新根就位后再删旧根
+- 修复 `WidgetLayoutExport` 到 `WidgetLayoutImport` 往返丢零值，导出改为写出 struct 的全部字段，CanvasPanel 的 `Offsets` 不再落成引擎默认的 (0,0,100,30)
+- 编辑器内队列的 heartbeat 随编辑器启动上线，任务要等 asset registry 首轮扫描结束再取，消除 `UpdateValidators request made before RegisterBlueprintValidators` 校验错误，刚启动就跑 `RenameAsset` 也不再撞上 Unable To Rename While Discovering Assets
+- 队列 run 期间保存触发的资产校验改在摘要之前对本 run 存过的包同步跑完，结果记成 `Save validation: <asset>: <message>`，并入该 run 的 Message Log 页与 warning / error 计数。插件新增依赖 DataValidation
+- 修复 run 的 Message Log 页在编辑器里一直空着，日志行改为即时写入
+- `run_commandlet.sh` 遇到 `editor_session.py` 登记的本项目编辑器还在启动时，等它的 heartbeat，最多 300 秒，不再退回独立 commandlet 与启动中的编辑器同时写资产
+- `run_commandlet.sh` 走队列时 Export 也核对产物，打印 `output:` / `missing output:`，缺产物退 1，与独立进程路径一致
+- 修复被杀编辑器留下的 heartbeat 在 pid 被 Windows 分给别的进程后仍被判成编辑器存活，wrapper 与 commandlet 的活编辑器检查都改为要求该 pid 是 `UnrealEditor.exe`
+- `editor_session.py` 新增 `running`，本项目有登记的活编辑器时退 0，`close` / `release` 删掉被杀编辑器留下的 `.alive`
+- 消除 `GetBindings` 的弃用编译警告
+- AI-Guide 补上 Python 远程执行比任务队列 heartbeat 晚几秒上线，刚启动时 `exec_in_editor.py` 会 ping 不到
+
 ### 2.6.8
 
 - `EditBlueprint` 的 `Graph` 新增 `AddDelegate` / `CreateDelegate`，对应编辑器的 Bind Event to 与 Create Event，绑定 `BlueprintAssignable` 委托

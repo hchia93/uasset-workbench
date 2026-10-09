@@ -65,8 +65,15 @@ namespace
         return false;
     }
 
-    // Resolves either destination: a named panel, or the tree root when the spec says AsRoot.
-    bool AttachWidget(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, UWidget* Widget, const TSharedPtr<FJsonObject>& Desc, const TCHAR* OpLabel)
+    // Where an Add or Reparent lands. ReplacedRoot is the old root an unwrap leaves empty, it goes once the widget is out of it.
+    struct FAttachDestination
+    {
+        UPanelWidget* Panel = nullptr;
+        UWidget* ReplacedRoot = nullptr;
+    };
+
+    // Runs before anything is built or detached, so a rejected spec leaves no constructed widget or GUID entry behind.
+    bool ResolveDestination(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const UWidget* Widget, const TSharedPtr<FJsonObject>& Desc, const TCHAR* OpLabel, FAttachDestination& OutDestination)
     {
         bool bAsRoot = false;
         Desc->TryGetBoolField(TEXT("AsRoot"), bAsRoot);
@@ -81,8 +88,22 @@ namespace
 
         if (bAsRoot)
         {
-            WidgetBP->WidgetTree->Modify();
-            WidgetBP->WidgetTree->RootWidget = Widget;
+            UWidget* OldRoot = WidgetBP->WidgetTree->RootWidget;
+            if (!OldRoot || OldRoot == Widget)
+            {
+                return true;
+            }
+
+            // Replacing the root drops everything the old root still holds. Only unwrapping its sole child is lossless.
+            const UPanelWidget* OldRootPanel = Cast<UPanelWidget>(OldRoot);
+            const bool bSoleChild = Widget && OldRootPanel && OldRootPanel->GetChildrenCount() == 1 && OldRootPanel->GetChildAt(0) == Widget;
+            if (!bSoleChild)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: widget %s AsRoot would drop the current root '%s' and everything under it. Delete it first, or Reparent its children out"), *Context.AssetPath, OpLabel, *OldRoot->GetName());
+                return false;
+            }
+
+            OutDestination.ReplacedRoot = OldRoot;
             return true;
         }
 
@@ -100,12 +121,34 @@ namespace
             return false;
         }
 
-        if (IsAncestorOf(Widget, Panel))
+        if (Widget && IsAncestorOf(Widget, Panel))
         {
             UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: '%s' sits inside '%s', reparenting there would detach the subtree"), *Context.AssetPath, *ParentName, *Widget->GetName());
             return false;
         }
 
+        OutDestination.Panel = Panel;
+        return true;
+    }
+
+    bool AttachWidget(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, UWidget* Widget, const TSharedPtr<FJsonObject>& Desc, const FAttachDestination& Destination)
+    {
+        UPanelWidget* Panel = Destination.Panel;
+        if (!Panel)
+        {
+            WidgetBP->WidgetTree->Modify();
+            WidgetBP->WidgetTree->RootWidget = Widget;
+
+            // The emptied old root goes through the editor's delete so its GUID entry goes too. Root first: deleting
+            // the root recompiles the skeleton, and that compile trashes every widget the tree no longer reaches.
+            if (Destination.ReplacedRoot)
+            {
+                FWidgetBlueprintEditorUtils::DeleteWidgets(WidgetBP, { Destination.ReplacedRoot }, FWidgetBlueprintEditorUtils::EDeleteWidgetWarningType::DeleteSilently);
+            }
+            return true;
+        }
+
+        const FString ParentName = Panel->GetName();
         Panel->Modify();
 
         int32 Index = INDEX_NONE;
@@ -394,6 +437,12 @@ namespace
                 return false;
             }
 
+            FAttachDestination Destination;
+            if (!ResolveDestination(Context, WidgetBP, nullptr, Desc, TEXT("Add"), Destination))
+            {
+                return false;
+            }
+
             WidgetBP->Modify();
             WidgetBP->WidgetTree->Modify();
             UWidget* Widget = WidgetBP->WidgetTree->ConstructWidget<UWidget>(WidgetClass, NewName);
@@ -418,7 +467,7 @@ namespace
                 }
             }
 
-            return AttachWidget(Context, WidgetBP, Widget, Desc, TEXT("Add"));
+            return AttachWidget(Context, WidgetBP, Widget, Desc, Destination);
         }
 
         bool ApplyDelete(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& Name, const TSharedPtr<FJsonObject>& Desc) const
@@ -464,10 +513,16 @@ namespace
                 return false;
             }
 
+            FAttachDestination Destination;
+            if (!ResolveDestination(Context, WidgetBP, Widget, Desc, TEXT("Reparent"), Destination))
+            {
+                return false;
+            }
+
             WidgetBP->Modify();
             Widget->Modify();
             DetachWidget(WidgetBP, Widget);
-            return AttachWidget(Context, WidgetBP, Widget, Desc, TEXT("Reparent"));
+            return AttachWidget(Context, WidgetBP, Widget, Desc, Destination);
         }
 
         bool ApplyModify(const FBlueprintEditContext& Context, UWidgetBlueprint* WidgetBP, const FString& Name, const TSharedPtr<FJsonObject>& Desc) const

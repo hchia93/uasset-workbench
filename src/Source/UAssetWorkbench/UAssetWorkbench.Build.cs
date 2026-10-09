@@ -16,6 +16,7 @@ public class UAssetWorkbench : ModuleRules
                 "UnrealEd",
                 "AssetRegistry",
                 "AssetTools",
+                "DataValidation",
                 "MediaAssets",
                 "Json",
                 "JsonUtilities",

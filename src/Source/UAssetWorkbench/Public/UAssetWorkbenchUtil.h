@@ -18,20 +18,54 @@ namespace UAssetWorkbench
 
         virtual void Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category) override;
 
+        // The editor delivers buffered devices from its own logging thread, after the run has already reported.
+        virtual bool CanBeUsedOnMultipleThreads() const override { return true; }
+
         int32 GetWarningCount() const { return m_WarningCount; }
         int32 GetErrorCount() const { return m_ErrorCount; }
         const FString& GetFirstError() const { return m_FirstError; }
+        const TArray<FString>& GetFailedTargets() const { return m_FailedTargets; }
 
         // Closing line on the page. Severity follows what the run actually reported.
         void Finish(const FString& Summary, bool bSuccess);
+
+        // The report of the queued run currently dispatching, null on the standalone commandlet path.
+        static FRunReport* GetActive();
+
+        void AddFailedTarget(const FString& Target);
 
     private:
         FString m_RunName;
         int32 m_WarningCount = 0;
         int32 m_ErrorCount = 0;
         FString m_FirstError;
+        TArray<FString> m_FailedTargets;
         bool m_bEmitting = false;
     };
+
+    // The first error this plugin logs while alive, or the text of a dialog the unattended run answered with its default.
+    class FFailureReasonCapture : public FOutputDevice
+    {
+    public:
+        FFailureReasonCapture();
+        virtual ~FFailureReasonCapture();
+
+        virtual void Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category) override;
+        virtual bool CanBeUsedOnMultipleThreads() const override { return true; }
+
+        // A dialog's text wins, it is the engine's own account of why it gave up.
+        FString GetReason() const;
+
+    private:
+        FString m_FirstError;
+        FString m_DialogText;
+    };
+
+    // Logs "<RunName> failed for <Target>. Reason: <Reason>" and puts Target on the queued run's summary line.
+    void ReportTargetFailure(const FString& RunName, const FString& Target, const FString& Reason);
+
+    // The AssetPath a spec target names, which is what its failure line reports.
+    FString DescribeSpecTarget(const TSharedPtr<FJsonObject>& Entry);
 
     // Parse "-<ParamName>A,B,C" out of a commandlet param string. Trims quotes and whitespace.
     // ParamName carries its own leading dash and trailing equals, e.g. TEXT("-blueprints=").

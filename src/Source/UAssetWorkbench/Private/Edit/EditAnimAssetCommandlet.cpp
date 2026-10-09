@@ -92,9 +92,10 @@ int32 UEditAnimAssetCommandlet::Main(const FString& Params)
     for (const TSharedPtr<FJsonValue>& Value : *Targets)
     {
         const TSharedPtr<FJsonObject>& Entry = Value->AsObject();
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!Entry.IsValid() || !ApplyTarget(Entry, Touched, Ops))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Target failed, nothing saved"));
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditAnimAsset"), UAssetWorkbench::DescribeSpecTarget(Entry), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }
@@ -107,9 +108,10 @@ int32 UEditAnimAssetCommandlet::Main(const FString& Params)
 
     for (UAnimSequenceBase* AnimAsset : Touched)
     {
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!UAssetWorkbench::CompileAndSavePackage(AnimAsset, false))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Failed to save package for %s"), *AnimAsset->GetPathName());
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditAnimAsset"), AnimAsset->GetPathName(), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }

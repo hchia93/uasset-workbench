@@ -14,6 +14,10 @@
 | `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
 | `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
 
+失败行: `<RunName> failed for <AssetPath>. Reason: <该 target 写入期间记下的第一条 error>`，保存失败同一格式。失败不落盘。
+
+queue 路径: run 摘要、toast 与 done 文件的 `Error` 字段写 `<RunName> failed for <资产名>. <第一条 error>`，`run_commandlet.sh` 打印成 `[run_commandlet] error: ...`。
+
 ## EditBlueprint
 
 ### Writer
@@ -240,6 +244,16 @@ Op: `Add` / `Delete` / `Reparent` / `Rename` / `Modify`，都用 `Name` 点名�
 
 `Parent` 与 `AsRoot` 必须给且只能给一个。`Parent` 指向的控件不是面板是错误。
 
+`AsRoot` 遇上已有的根：
+
+| Op | 结果 |
+| --- | --- |
+| `Add` | 报错 `widget Add AsRoot would drop the current root '<name>' and everything under it. Delete it first, or Reparent its children out` |
+| `Reparent`，旧根是面板且只包着这个控件 | 拆包：控件成为新根，旧根走编辑器的删除路径，变量 GUID 一并清掉 |
+| `Reparent`，其他情况 | 同一句报错，`Add` 换成 `Reparent` |
+
+目标位置在建控件之前校验，被拒的 `Add` 不留任何东西。树上还没有根时 `Add` 带 `AsRoot` 直接成为根。
+
 `Index` 只对面板有意义，不给就追加到末尾。
 
 换父级会丢掉旧 slot，新 slot 由新面板的类型决定，要保留的 slot 属性在同一个 op 的 `Slot` 里重新给。
@@ -251,6 +265,8 @@ Op: `Add` / `Delete` / `Reparent` / `Rename` / `Modify`，都用 `Name` 点名�
 同位替换一个控件：新控件就位（`Add` 或 `Reparent`），每条动画一个 `WidgetAnimations` 的 `ReplaceBinding`，再 `Delete` 旧控件。三步能写在同一个 spec 里，`Widgets` 虽然先跑，`ReplaceBinding` 按名字从绑定表找旧绑定，不需要旧控件还在。原生 `BindWidget` 属性的 Get 节点走 `Graph` 改接或删掉。
 
 拆掉一个只包着单个子控件的容器：`Reparent` 子控件到容器的父级，再 `Delete` 容器，两个 op 写在同一个 spec 里。
+
+要拆的容器是根时：先 `Delete` 或 `Reparent` 移走其他子控件，再对留下的那个 `Reparent` 带 `AsRoot`，旧根随之删除。
 
 `Rename` 用 `NewName`。控件改名只能走这里：`WidgetLayoutImport` 是整树替换，靠「同名保 GUID」让动画绑定活过重建，改名恰好绕开那个前提，所以 Export 改 JSON 再 Import 那条路改不动名字。
 

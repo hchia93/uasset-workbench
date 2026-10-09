@@ -55,7 +55,7 @@
 
 </div>
 
-任意资产: `CreateAsset` 按 spec 新建，`RenameAsset` / `DuplicateAsset` / `ResaveAsset` 改名、复制、重存
+任意资产: `CreateAsset` 按 spec 新建，`RenameAsset` / `DuplicateAsset` / `ResaveAsset` 改名、复制、重存，`FixupRedirector` 修复 redirector，`ResaveRedirectedAsset` 重存仍引用 CoreRedirect 旧名的包
 
 每格对应的 RunName: [Docs/AI-Guide.md](Docs/AI-Guide.md) 的决策表
 

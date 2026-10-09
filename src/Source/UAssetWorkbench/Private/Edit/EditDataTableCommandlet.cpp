@@ -88,9 +88,10 @@ int32 UEditDataTableCommandlet::Main(const FString& Params)
     for (const TSharedPtr<FJsonValue>& Value : *Targets)
     {
         const TSharedPtr<FJsonObject>& Entry = Value->AsObject();
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!Entry.IsValid() || !ApplyTarget(Entry, Touched, Ops))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Target failed, nothing saved"));
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditDataTable"), UAssetWorkbench::DescribeSpecTarget(Entry), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }
@@ -107,9 +108,10 @@ int32 UEditDataTableCommandlet::Main(const FString& Params)
         // showing the old values until a reload.
         Table->HandleDataTableChanged();
 
+        UAssetWorkbench::FFailureReasonCapture FailureReason;
         if (!UAssetWorkbench::CompileAndSavePackage(Table, /* bCompileBlueprint */ false))
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("Failed to save package for %s"), *Table->GetPathName());
+            UAssetWorkbench::ReportTargetFailure(TEXT("EditDataTable"), Table->GetPathName(), FailureReason.GetReason());
             return ToExitCode(EUAssetWorkbenchExitType::Failed);
         }
     }

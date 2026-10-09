@@ -7,7 +7,10 @@
 #      HEARTBEAT_FRESHNESS_SEC, or the pid it holds still running), an in-editor
 #      queue subsystem is active. Write a pending task json, wait for the
 #      corresponding done/<uuid>.json.
-#   2. Otherwise, launch the commandlet directly (legacy path). The commandlet
+#   2. If editor_session.py has a live editor of this project registered but its
+#      heartbeat is not up yet, the editor is still starting. Wait for the
+#      heartbeat, then take route 1.
+#   3. Otherwise, launch the commandlet directly (legacy path). The commandlet
 #      itself also checks the heartbeat and aborts on conflict.
 #
 # Usage:
@@ -39,6 +42,8 @@
 set -u
 
 HEARTBEAT_FRESHNESS_SEC=15
+HEARTBEAT_STARTUP_WAIT_SEC=300
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ "$#" -lt 4 ]; then
     echo "Usage: $0 <UE_PATH> <UPROJECT> <RunName> <AssetList> [IDLE_SEC] [MAX_SEC] [EXTRA_ARGS]" >&2
@@ -101,7 +106,7 @@ is_heartbeat_fresh() {
     # The ticker that stamps the file stops during a synchronous editor stall, registry scan or shader
     # compile, so a stale mtime is not proof of death. The pid the editor wrote there is.
     pid=$(tr -dc '0-9' < "$ALIVE_FILE" 2>/dev/null)
-    if is_winpid_alive "$pid"; then
+    if is_editor_pid_alive "$pid"; then
         return 0
     fi
     return 1
@@ -112,6 +117,14 @@ is_winpid_alive() {
     local wp="$1"
     [ -z "$wp" ] && return 1
     tasklist //FI "PID eq $wp" //NH 2>/dev/null | grep -qw "$wp"
+}
+
+# $1 = Windows pid. 0 only if that pid is still an editor. A killed editor leaves .alive behind and Windows
+# hands its pid to the next process, so a bare pid check reads a shell or a compiler as the editor.
+is_editor_pid_alive() {
+    local wp="$1"
+    [ -z "$wp" ] && return 1
+    tasklist //FI "PID eq $wp" //FI "IMAGENAME eq UnrealEditor.exe" //NH 2>/dev/null | grep -qw "$wp"
 }
 
 # Kill a backgrounded native UnrealEditor-Cmd job. $! is an MSYS pid; Windows
@@ -156,6 +169,68 @@ newest_export_since() {
     if [ -n "$best" ]; then
         echo "$best"
     fi
+}
+
+# Fills EXPECTED_PREFIXES with one stamped-export prefix per asset. Empty for any group but export.
+collect_expected_prefixes() {
+    local A REL
+    EXPECTED_PREFIXES=()
+    if [ "$GROUP" != "export" ]; then
+        return
+    fi
+    if [ -z "$ASSETS" ]; then
+        # An export with no asset list (PCGCatalogExport) names its output after the run.
+        EXPECTED_PREFIXES+=("$EXPORT_ROOT/$RUN")
+        return
+    fi
+    IFS=',' read -r -a ASSET_ARR <<< "$ASSETS"
+    for A in "${ASSET_ARR[@]}"; do
+        [ -z "$A" ] && continue
+        REL="${A#/}"
+        EXPECTED_PREFIXES+=("$EXPORT_ROOT/$REL")
+    done
+}
+
+# $1 = epoch seconds the run started. Prints output: / missing output: per expected export, returns 1 if any is missing.
+report_export_outputs() {
+    local since="$1" P F rc=0
+    for P in "${EXPECTED_PREFIXES[@]}"; do
+        F="$(newest_export_since "$P" "$since")"
+        if [ -z "$F" ]; then
+            echo "[run_commandlet] missing output: ${P}_r*.json" >&2
+            rc=1
+        else
+            echo "[run_commandlet] output: $F" >&2
+        fi
+    done
+    return "$rc"
+}
+
+# 0 if editor_session.py has a live editor of this project registered.
+is_registered_editor_running() {
+    python "$SCRIPT_DIR/editor_session.py" running --uproject "$UPROJECT" >/dev/null 2>&1
+}
+
+# A registered editor writes its first heartbeat some seconds into startup. A standalone commandlet started in that
+# window writes the same assets the editor is loading, and the editor never picks up the new dependency edges.
+# 0 once the heartbeat is up, 1 if the editor went away first, 2 if it stayed silent past the wait.
+wait_for_startup_heartbeat() {
+    local start_ts now
+    start_ts=$(date +%s)
+    echo "[run_commandlet] a registered editor of this project is starting, waiting for its task queue heartbeat" >&2
+    while true; do
+        if is_heartbeat_fresh; then
+            return 0
+        fi
+        if ! is_registered_editor_running; then
+            return 1
+        fi
+        now=$(date +%s)
+        if [ $((now - start_ts)) -gt "$HEARTBEAT_STARTUP_WAIT_SEC" ]; then
+            return 2
+        fi
+        sleep 2
+    done
 }
 
 route_queue() {
@@ -215,10 +290,20 @@ EOF
         sleep 1
     done
 
-    local exit_code
+    local exit_code error_text
     exit_code=$(grep -o '"ExitCode"[[:space:]]*:[[:space:]]*-\{0,1\}[0-9]\+' "$done_path" | grep -o '\-\{0,1\}[0-9]\+$')
+    error_text=$(grep -o '"Error"[[:space:]]*:[[:space:]]*"\([^"\\]\|\\.\)*"' "$done_path" | sed 's/^"Error"[[:space:]]*:[[:space:]]*"//; s/"$//')
     echo "[run_commandlet] task $uuid done exit=${exit_code:-1}" >&2
+    if [ -n "$error_text" ]; then
+        echo "[run_commandlet] error: $error_text" >&2
+    fi
     rm -f "$done_path"
+
+    # Same report the standalone path prints, a caller reads the output path from here either way.
+    collect_expected_prefixes
+    if ! report_export_outputs "$start_ts" && [ "${exit_code:-1}" -eq 0 ]; then
+        return 1
+    fi
     return "${exit_code:-1}"
 }
 
@@ -228,20 +313,7 @@ route_commandlet() {
         return 2
     fi
 
-    local A REL
-    EXPECTED_PREFIXES=()
-    if [ "$GROUP" = "export" ]; then
-        if [ -z "$ASSETS" ]; then
-            # An export with no asset list (PCGCatalogExport) names its output after the run.
-            EXPECTED_PREFIXES+=("$EXPORT_ROOT/$RUN")
-        else
-            IFS=',' read -r -a ASSET_ARR <<< "$ASSETS"
-            for A in "${ASSET_ARR[@]}"; do
-                REL="${A#/}"
-                EXPECTED_PREFIXES+=("$EXPORT_ROOT/$REL")
-            done
-        fi
-    fi
+    collect_expected_prefixes
 
     local CMD_LOG="$QUEUE_ROOT/last_commandlet.log"
     mkdir -p "$QUEUE_ROOT"
@@ -331,15 +403,7 @@ route_commandlet() {
 
     local RC=0
     if [ "$GROUP" = "export" ]; then
-        for P in "${EXPECTED_PREFIXES[@]}"; do
-            F="$(newest_export_since "$P" "$START_TS")"
-            if [ -z "$F" ]; then
-                echo "[run_commandlet] missing output: ${P}_r*.json" >&2
-                RC=1
-            else
-                echo "[run_commandlet] output: $F" >&2
-            fi
-        done
+        report_export_outputs "$START_TS" || RC=1
     else
         RC="$EXIT_RC"
     fi
@@ -354,7 +418,22 @@ route_commandlet() {
 if is_heartbeat_fresh; then
     route_queue
     exit $?
-else
-    route_commandlet
-    exit $?
 fi
+
+if is_registered_editor_running; then
+    wait_for_startup_heartbeat
+    case $? in
+        0)
+            route_queue
+            exit $?
+            ;;
+        2)
+            echo "[run_commandlet] the registered editor wrote no heartbeat within ${HEARTBEAT_STARTUP_WAIT_SEC}s, refusing to run beside it" >&2
+            exit 2
+            ;;
+    esac
+    echo "[run_commandlet] the registered editor exited before its heartbeat came up, running standalone" >&2
+fi
+
+route_commandlet
+exit $?

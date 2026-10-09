@@ -47,7 +47,7 @@
 | 改 UMG 控件的名字，C++ 侧 `BindWidget` 改名后要让 WBP 跟上 | `EditBlueprint` 的 `Widgets` | Edit |
 | 改 UMG 控件或它 slot 的属性，不想整树替换 | `EditBlueprint` 的 `Widgets` | Edit |
 | 往控件树里加、删、挪一个控件，不想整树替换 | `EditBlueprint` 的 `Widgets` 的 `Add` / `Delete` / `Reparent` | Edit |
-| 拆掉一个只包着单个子控件的容器 | `EditBlueprint` 的 `Widgets`，`Reparent` 子控件再 `Delete` 容器 | Edit |
+| 拆掉一个只包着单个子控件的容器 | `EditBlueprint` 的 `Widgets`，`Reparent` 子控件再 `Delete` 容器。容器是根时对子控件 `Reparent` 带 `AsRoot` | Edit |
 | 改 widget animation 的关键帧数值或时间 | `EditBlueprint` 的 `WidgetAnimations` 的 `SetKeys` | Edit |
 | 从零给 widget 建一条动画，或删掉一条 | `EditBlueprint` 的 `WidgetAnimations` 的 `Add` / `Delete` | Edit |
 | 给动画加一条属性轨道，比如让某个控件的 RenderOpacity 能动 | `EditBlueprint` 的 `WidgetAnimations` 的 `AddTrack` | Edit |
@@ -66,9 +66,11 @@
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
 | 图逻辑搬进 C++ 后，BP 图里作废的那几个节点要删掉 | `DeleteBlueprintNode` | Migrate |
 | 批量改 Blueprint 的父类 | `ReparentBlueprint` | Migrate |
-| 资产改名或搬目录，引用要跟着走 | `RenameAsset` | Migrate |
+| 资产或整个目录改名、搬路径，引用要跟着走 | `RenameAsset` | Migrate |
+| 修 redirector: 让引用方指向新路径并删掉 redirector | `FixupRedirector` | Migrate |
 | 在动手前先复制一份资产做对照 | `DuplicateAsset` | Migrate |
-| 让 CoreRedirect 解析过的引用落盘，好撤掉那条 redirect | `ResaveAsset` | Migrate |
+| 想撤一条 CoreRedirect，先找出还引用旧名的包并 resave | `ResaveRedirectedAsset` | Migrate |
+| 已知是哪几个资产，让 CoreRedirect 解析过的引用落盘 | `ResaveAsset` | Migrate |
 | 资产改名后，把别的 level 的 import 改指到新资产 | `SanitizeLevelReference` | Migrate |
 | 想知道有没有 level 引用了已经不存在的资产 | `AuditLevelReference` | Audit |
 | 提交前 gate 一次破损引用检查 | `AuditLevelReference` | Audit |
@@ -128,7 +130,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 Edit。五个 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串，dry run 就是不给 `-apply`。
 
-Migrate。两个 redirect 与 `DeleteBlueprintNode` 默认 dry run，确认输出无误后补 `-apply`。
+Migrate。除 `ReparentBlueprint`、`ResaveAsset`、`SanitizeLevelReference` 外默认 dry run，确认输出无误后补 `-apply`。
 
 ```bash
 bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
@@ -163,9 +165,10 @@ Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位�
 | 命令 | 作用 |
 | --- | --- |
 | `launch --owner <name> [--uproject <path>] [-- <editor args>]` | 起编辑器，分配最小空闲编号，打印 `EDITOR #N pid=... owner=... project=...`。同项目没有别的活编辑器时才清 task queue 的 `.alive` heartbeat |
-| `close --owner <name> <N>` | 用 `taskkill /F /T /PID` 关掉 #N。#N 属于别的 owner 时拒绝，退出码 3 |
-| `release --owner <name> [--uproject <path>]` | 关掉本 owner 在该项目上的全部编辑器。别的 owner 的编辑器还占着项目时退出码 3，此时 build 会撞上被锁的二进制 |
+| `close --owner <name> <N>` | 用 `taskkill /F /T /PID` 关掉 #N，删掉它留下的 `.alive`。#N 属于别的 owner 时拒绝，退出码 3 |
+| `release --owner <name> [--uproject <path>]` | 关掉本 owner 在该项目上的全部编辑器，删掉它们留下的 `.alive`。别的 owner 的编辑器还占着项目时退出码 3，此时 build 会撞上被锁的二进制 |
 | `list` | 列出活编辑器的编号、pid、owner、项目 |
+| `running [--uproject <path>]` | 本项目有登记的活编辑器时列出并退 0，没有退 1。`run_commandlet.sh` 靠它认出正在启动的编辑器 |
 
 `--owner` 必填，用 agent 或 session 的稳定名字。谁起的编辑器谁关，记住自己的编号。
 
@@ -184,9 +187,13 @@ python Plugins/UAssetWorkbench/scripts/exec_in_editor.py [--editor <N>] --cmd "<
 
 页是历史，跑完不会消失，之后回头翻得到。摘要行在页尾，带 warning 与 error 计数。只要计数非零就弹 toast，干净的 run 不打扰。
 
+保存触发的资产校验在摘要之前对本 run 存过的包同步跑完，每条记成 `Save validation: <asset>: <message>`，计入本页的 warning 与 error 计数。
+
 编辑器关着时走 commandlet 路径，没有 UI，记录在 `Saved/Logs/` 下的日志文件里。
 
 摘要行**只在 run 确实由 `AssetList` 驱动时**才带资产名。spec 驱动的 run（`Create*` / `*Import` / `Edit*`）摘要不带名字，因为它们碰了哪些资产写在 spec 里，位置参数说了不算。
+
+例外: `Edit*` 与 `RenameAsset` 失败时摘要写 `<RunName> failed for <失败的资产名>. <第一条 error>`，done 文件的 `Error` 字段同一句，wrapper 打印成 `[run_commandlet] error: ...`。
 
 ```bash
 bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
@@ -225,7 +232,10 @@ Audit。
 | 坑 | 处理 |
 | --- | --- |
 | 编辑器开着时直接起 commandlet | 一律走 wrapper。commandlet 检测到活的 heartbeat 会退出码 2 自保 |
-| 刚关编辑器 15 秒内调 wrapper | heartbeat 还算新鲜，任务先进队列，等到 heartbeat 过期 wrapper 撤回任务并退 1。关编辑器后等 15 秒再调 |
+| 刚关编辑器 15 秒内调 wrapper | heartbeat 还算新鲜，任务先进队列，等到 heartbeat 过期 wrapper 撤回任务并退 1。关编辑器后等 15 秒再调。经 `editor_session.py` 的 `close` / `release` 关的不受影响，它们当场删掉 `.alive` |
+| 编辑器刚起、heartbeat 还没上线就调 wrapper | `editor_session.py` 登记了本项目的活编辑器时，wrapper 打印 `a registered editor of this project is starting, waiting for its task queue heartbeat` 并等最多 300 秒，heartbeat 一上线就走队列。编辑器先退出则改走独立 commandlet，等满仍无 heartbeat 退 2 |
+| 编辑器刚起，排进队列的任务迟迟不开跑 | heartbeat 随编辑器启动就上线，任务要等 asset registry 首轮扫描结束、再过一帧才被取走执行。照常等结果，不用撤回重排 |
+| 编辑器刚起就调 `exec_in_editor.py` | Python remote execution 比任务队列 heartbeat 晚几秒上线，实测 `-NullRHI` 下约 24 秒，此前报 `FAIL: no editor of <dir> answered the ping`。稍等再重试 |
 | 按映像名杀编辑器，`taskkill /IM UnrealEditor.exe` 或 `Stop-Process -Name UnrealEditor` | 会连带杀掉本机其他 agent 的编辑器。只关自己起的，走 `editor_session.py` 的 `close` / `release` |
 | 在 `EXTRA_ARGS` 里写 `-assets=` | 入口资产只走位置参数 `AssetList`。wrapper 由它生成 `-assets`，queue 路径由任务 json 的 `Assets` 数组构造，两边在 `AssetList` 为空时都不发这个 flag |
 | 导出的 JSON 可能上万行 | 先 grep 定位再按行号区间读，不要整份读进上下文 |
@@ -238,6 +248,7 @@ Audit。
 | 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
 | `WidgetLayoutImport` 退出码 1 但资产其实写进去了 | 引擎会改写 commandlet 的退出码。判断成败以日志里的 `Imported layout into ...` 为准，别只看退出码 |
 | 以为 `Delete` 一个面板只删它自己 | 面板还挂着子控件时默认拒绝并报出子控件名。确实要连子树一起删才加 `Recursive` |
+| 树上已有根时用 `AsRoot` 换根 | `Add` 一律报错。`Reparent` 只在旧根是只包着该控件的面板时放行，旧根随之删除。拆根容器先 `Delete` 或 `Reparent` 移走其他子控件，再对留下的那个 `Reparent` 带 `AsRoot` |
 | 以为 `Widgets` 的 `Delete` 会清掉动画绑定 | 不清。动画绑定留成 missing，指向原生 `BindWidget` 属性的 Get 节点也留着。先 `ReplaceBinding` 或 `DeleteBinding`，Get 节点走 `Graph` |
 | 不知道 `AddTrack` 的 `PropertyPath` 填什么 | 先 `WidgetLayoutExport`，`Tracks[].PropertyPath` 原样抄。没有现成轨道时填属性名，嵌套属性用点号 |
 | `SetKeys` 的 `Channel` 填了轨道名 | 单通道轨道的通道名是 `None`，不是轨道名。多通道的形如 `Translation.X`，一律以导出里的 `Channels[].Name` 为准 |
@@ -250,6 +261,9 @@ Audit。
 | 把 Audit 的退出码 3 当成失败 | 3 不是失败，运行本身成功，只是报告里有要处理的东西。跑不起来才是 1 |
 | `AuditLevelReference` 报出一大堆破损 | 先确认项目的插件全部启用。未挂载 content root 下的依赖会被判成 missing，那是假破损 |
 | `SanitizeLevelReference` 在旧资产删掉之后才跑 | 来不及了，换指针需要新旧两边都还在磁盘上。必须在删除旧资产之前跑 |
+| `FixupRedirector` 或 `RenameAsset` 删了 redirector，工作副本里却还列着 | 只从磁盘删除。提交前在版本控制里补记删除，清单就是日志里的 `deleted` 行 |
+| `RenameAsset` 带 `-keepredirectors` 结尾报 `run FixupRedirector before deleting it` | 没 load 到的引用方（没打开的 map 等）还写着旧路径，经 redirector 找到资产，退 0。删 redirector 之前先对它跑 `FixupRedirector` |
+| `ResaveRedirectedAsset` 报 `no package under <dir> names it` 就撤 redirect | 它只扫资产包。撤之前再查代码、ini 与存档有没有用到旧名 |
 | 分不清 log 属于哪一组 | `LogUAssetWorkbenchExporter` / `LogUAssetWorkbenchImporter` / `LogUAssetWorkbenchMigrator` / `LogUAssetWorkbenchAuditor` 各对应一组，调度与公共部分在 `LogUAssetWorkbenchCore` |
 | 编辑器开着就跑 stream metric | 跑之前编辑器必须关闭，脚本会直接报错退出 |
 | 担心探针改 streaming class 污染 level | 只在内存里换成 `LevelStreamingDynamic`，不落盘 |

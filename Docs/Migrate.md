@@ -22,11 +22,13 @@ CoreRedirects 只覆盖调用侧: call 节点、变量引用、类引用。Bluep
 | `DeleteBlueprintNode` | 按 node id 删图节点，图逻辑搬进 C++ 之后的清理步骤。删除会切断该节点所有连线，不重新接线。schema 拒删的节点，function entry 与 result，报出后跳过 | dry run |
 | `ReparentBlueprint` | 改 Blueprint 的父类 | 直接执行并保存 |
 | `DuplicateAsset` | 把资产复制到新路径。副本独立，内部引用仍指向原来指的东西，不做重定向。目标已存在是错误，重跑不会覆盖掉已经改过的副本 | dry run |
-| `RenameAsset` | 改资产名或搬路径，硬引用与软引用一起重指。逐个资产报改名前后的 referencer 数，掉引用会报错而不是静默通过。留下的 redirector 默认 fixup 后删除 | dry run |
+| `RenameAsset` | 改资产名或搬路径，源可以是整个目录，硬引用与软引用一起重指。逐个资产报改名前后的 referencer 数，掉引用会报错而不是静默通过。留下的 redirector 默认 fixup 后删除 | dry run |
+| `FixupRedirector` | 重存 redirector 的每个引用方，让它直接指向目标，再删掉已经没人引用的 redirector。收 redirector 包或目录 | dry run |
 | `ResaveAsset` | 强制 load、compile、save，让 load 期的 fixup 落盘，例如已被 CoreRedirect 解析的引用。之后就能撤掉那条 redirect。支持 Blueprint 和 map | 直接保存 |
+| `ResaveRedirectedAsset` | 按项目 `[CoreRedirects]` 的旧名扫包头，找出还引用旧名的包并 resave，不必事先知道是哪些资产 | dry run |
 | `SanitizeLevelReference` | 把 level 里对旧资产的每一处引用换成新资产，然后 resave 这个 level | 直接保存，`-dryrun` 只统计 |
 
-执行后被改动的 uasset 会出现在版本控制的工作副本里。
+执行后被改动的 uasset 会出现在版本控制的工作副本里。删掉的 redirector 文件只从磁盘删除，要在版本控制里补记删除。
 
 ## 写入类的 run 要在编辑器开着时跑
 
@@ -64,11 +66,29 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh     "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject"     RenameAsset "" 10 600     '-pairs="/Game/UI/Debug/WBP_DebugMenu>/Game/UI/Cheat/WBP_CheatMenu" -apply'
 ```
 
-加 `-keepredirectors` 保留 redirector，跨仓库引用还没跟上时才需要。默认删掉，SVN 工作副本里留 redirector 就是垃圾。
+源是目录（没有同名包）时展开成目录下逐个资产的 pair，相对路径原样接到目标目录下。目录里已有的 redirector 跳过并报 warning，先对这个目录跑 `FixupRedirector`。
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    RenameAsset "" 10 600 \
+    '-pairs="/Game/Audio/Settings>/Game/Audio" -apply'
+```
+
+加 `-keepredirectors` 保留 redirector，跨仓库引用还没跟上时才需要。默认删掉，SVN 工作副本里留 redirector 就是垃圾。redirector 的 fixup 与 `FixupRedirector` 同一份代码，不弹报告窗，in-editor 队列里照常跑。
+
+改名前已 load 的引用方若 import 了资产却没有对象在用（复制粘贴留下的残留 import 等），记一行 `imports X but no object in it uses it, saving drops that import`，不进改名后的引用核对。
+
+带 `-keepredirectors` 时，改名没 load 到的引用方（没打开的 map 等）还写着旧路径，经 redirector 找到资产。这类记成 Display 行 `... still reaches ... through the redirector at ...`，计入 `through the redirector`，结尾给 Warning `run FixupRedirector before deleting it`，退 0。
+
+逐资产摘要: `<dest>  R/N referencer(s) repointed, T through the redirector, S stale import(s) dropped`
+失败行: `RenameAsset failed for <资产>. Reason: <原因>`，多个资产时 `<资产>` 写成 `<第一个> and N more`
+原因: 被 unattended 自动取消的对话框文本，没有对话框时取插件记下的第一条 error
+独立进程: 改名前先同步扫一遍 asset registry
 
 C++ 类改名同时发生时，先在 `DefaultEngine.ini` 的 `[CoreRedirects]` 写好 class redirect 再跑，否则资产加载时找不到父类，rename 会在 load 阶段就失败。
 
-ini 或 CDO 有软引用指向待改名资产时，`FAssetRenameManager` 会弹一个 OkCancel 确认框。commandlet 跑在 unattended 下，那个框必然答 Cancel，rename 直接返回失败。**先把 ini 指到目标路径再跑**，目标此刻还不存在没关系，软引用解析成 null 不报错。日志里搜 `Message dialog closed` 能确认是不是撞上这条。
+ini 或 CDO 有软引用指向待改名资产时，`FAssetRenameManager` 会弹一个 OkCancel 确认框。commandlet 跑在 unattended 下，那个框必然答 Cancel，rename 直接返回失败。**先把 ini 指到目标路径再跑**，目标此刻还不存在没关系，软引用解析成 null 不报错。编辑器开着时改完 ini 要重启编辑器。撞上这条时失败行的原因就是那个框的文本 `Source code, config INI, and text files may need Find/Replace for: ... Continue with rename?`，后面跟一行 Display 提示改 ini、重启编辑器再跑。
 
 `DeleteBlueprintNode`。node id 从 `BlueprintEdGraphExport` 加 `-graphs` 的导出产物里的 `NodeId` 原样抄，纯十六进制加逗号，不需要引号。
 
@@ -137,6 +157,101 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | 1 | 至少一个 level 失败，或参数错误 |
 | 2 | 编辑器在运行 |
 
+## FixupRedirector
+
+用途: 修 redirector。重存每个引用方让它直接指向 redirector 的目标，再删掉已经没人引用的 redirector。
+
+### 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `-assets=` | 逗号分隔的 redirector 包或目录，目录递归查找。由 `AssetList` 生成 |
+| `-apply` | 落盘，不给即 dry run |
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    FixupRedirector "/Game/Folder,/Game/Old/WBP_Old" 10 600 \
+    '-apply'
+```
+
+### 行为
+
+| 情况 | 结果 |
+| --- | --- |
+| dry run | 逐个列出 `<redirector> -> <目标>  (N referencer package(s))`，不写盘 |
+| `-apply` | 重存引用方，再删掉没人引用的 redirector，每删一个打一行 `deleted <file>` |
+| 引用方 load 不到、存不了、磁盘上只读，或代码引用了 redirector | 该 redirector 留下，日志说明原因，退 1 |
+| 路径下没有 redirector | Warning `<path> holds no redirector` |
+
+不打开引擎 Fix Up Redirectors 的报告窗，in-editor 队列里能跑。
+
+删掉的 redirector 文件只从磁盘删除，提交前要在版本控制里补记删除，清单就是 `deleted <file>` 行。
+
+### 退出码
+
+| 码 | 含义 |
+| --- | --- |
+| 0 | 完成，或 dry run |
+| 1 | 参数错误，或至少一个 redirector 留下 |
+| 2 | 编辑器在运行 |
+
+## ResaveRedirectedAsset
+
+用途: 撤一条 CoreRedirect 之前，找出还引用旧名的包并 resave，让新名落盘。
+
+### 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `-scandir=` | 扫描根，默认 `/Game`。map 对应的 `__ExternalActors__` / `__ExternalObjects__` 目录一并扫 |
+| `-oldnames=` | 逗号分隔，只看这几条 redirect。写完整旧名，或最后一个点之后的短名 |
+| `-apply` | 落盘，不给即 dry run |
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    ResaveRedirectedAsset "" 10 600 \
+    '-scandir=/Game -oldnames="OldActor,/Game/Old/BP_A" -apply'
+```
+
+### 扫描
+
+redirect 来源: 项目 `Config/DefaultEngine.ini` 的 `[CoreRedirects]`，引擎自带的 redirect 不算
+扫描方式: 直接读磁盘上 `.uasset` / `.umap` 的包头，不加载，整个 `/Game` 扫一遍是秒级
+
+| redirect | 怎样算引用 |
+| --- | --- |
+| `ClassRedirects` / `PackageRedirects` | 包 import 了旧类或旧包。名字表里只是同名的普通名字（如 anim notify 的显示名）不算 |
+| `StructRedirects` / `EnumRedirects` | 名字表里有旧名，它们只出现在 property tag 里 |
+| `PropertyRedirects` / `FunctionRedirects` | 不扫。Blueprint 节点把它们存成普通名字，resave 不改写 |
+
+### 输出
+
+| 行 | 含义 |
+| --- | --- |
+| `<包>  (<旧名>...)` | 每个包一行，列出它还引用的旧名 |
+| `<key> <旧名>: no package under <dir> names it` | 扫描范围内没有包引用，可以候选撤掉。撤之前先查代码、ini 与存档 |
+| `<包> still names <旧名> after the resave` | `-apply` 存完重读包头仍有旧名，Warning。struct / enum 旧名可能以普通名字留下（如 Blueprint pin 类型），这条 redirect 还撤不掉 |
+
+### apply
+
+`-apply` 逐包 load、编译 Blueprint，走编辑器的保存路径落盘，map 与 external actor 包都在内，存完重读每个包核对。
+
+编辑器里有未保存改动的包拒绝处理，报 error，先保存或丢弃那些改动。
+
+### 退出码
+
+| 码 | 含义 |
+| --- | --- |
+| 0 | 完成，dry run，或没有包要存 |
+| 1 | `[CoreRedirects]` 里没有匹配的 Class / Struct / Enum / Package redirect，或至少一个包没存成 |
+| 2 | 编辑器在运行 |
+
 ## 退出码
 
 | 码 | 含义 |
@@ -151,6 +266,9 @@ Migrate 组不会返回 3，3 是 Audit 组专用。退 1 的具体口径逐 com
 | --- | --- |
 | `DeleteBlueprintNode` | 参数错、node id 解析不了、没有资产、编译或保存失败 |
 | `DuplicateAsset` | 参数错、源资产缺失、目标已存在 |
+| `RenameAsset` | 参数错、源 load 不到、目标已存在、改名被拒、保存失败、有引用方掉了引用、redirector 修不掉。只剩经 redirector 的引用方不算失败，退 0 |
+| `FixupRedirector` | 参数错，或至少一个 redirector 留下 |
+| `ResaveRedirectedAsset` | 没有匹配的 redirect，或至少一个包没存成 |
 | `SanitizeLevelReference` | 参数错，或至少一个 level 失败 |
 
 没命中任何节点的 `DeleteBlueprintNode` 不算失败，退 0 并在结尾把没命中的 id 报出来。
@@ -165,6 +283,8 @@ Migrate 组不会返回 3，3 是 Audit 组专用。退 1 的具体口径逐 com
 | `RedirectBlueprintPin` | 只扫描 | 补 `-apply` |
 | `DeleteBlueprintNode` | 只扫描 | 补 `-apply` |
 | `DuplicateAsset` | 只扫描 | 补 `-apply` |
+| `FixupRedirector` | 只扫描 | 补 `-apply` |
+| `ResaveRedirectedAsset` | 只扫描 | 补 `-apply` |
 | `SanitizeLevelReference` | 直接落盘 | 想先看结果就加 `-dryrun` |
 
 两个 redirect 的扫描输出里逐条列出命中的 Blueprint、事件或节点、以及会搬多少组连线，确认无误再补 `-apply` 编译并保存。

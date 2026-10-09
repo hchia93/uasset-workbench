@@ -4,12 +4,16 @@
 #include "UAssetWorkbenchModule.h"
 #include "UAssetWorkbenchUtil.h"
 
+#include "AssetRegistry/ARFilter.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Commandlets/Commandlet.h"
 #include "Containers/Ticker.h"
+#include "DataValidationSettings.h"
 #include "DirectoryWatcherModule.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Editor.h"
+#include "EditorValidatorSubsystem.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -20,6 +24,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "UObject/ObjectSaveContext.h"
+#include "UObject/Package.h"
 #include "UObject/UObjectIterator.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
@@ -121,7 +127,7 @@ void UAssetWorkbenchTaskQueueSubsystem::Initialize(FSubsystemCollectionBase& Col
     if (GIsRunning)
     {
         // Created after startup, the broadcast has already gone out.
-        StartQueueIntake();
+        WaitForAssetDiscovery();
     }
     else
     {
@@ -133,7 +139,40 @@ void UAssetWorkbenchTaskQueueSubsystem::HandleEditorInitialized(double StartupSe
 {
     FEditorDelegates::OnEditorInitialized.Remove(m_EditorInitializedHandle);
     m_EditorInitializedHandle.Reset();
+    WaitForAssetDiscovery();
+}
+
+void UAssetWorkbenchTaskQueueSubsystem::WaitForAssetDiscovery()
+{
+    // The editor reports itself initialized while the registry is still scanning. Until the scan ends the validator
+    // subsystem has no Blueprint validators, so save-time validation warns, and AssetTools refuses to rename.
+    IAssetRegistry& Registry = IAssetRegistry::GetChecked();
+    if (Registry.IsLoadingAssets())
+    {
+        m_FilesLoadedHandle = Registry.OnFilesLoaded().AddUObject(this, &UAssetWorkbenchTaskQueueSubsystem::HandleFilesLoaded);
+        return;
+    }
+
+    HandleFilesLoaded();
+}
+
+void UAssetWorkbenchTaskQueueSubsystem::HandleFilesLoaded()
+{
+    if (m_FilesLoadedHandle.IsValid())
+    {
+        IAssetRegistry::GetChecked().OnFilesLoaded().Remove(m_FilesLoadedHandle);
+        m_FilesLoadedHandle.Reset();
+    }
+
+    // The validator subsystem registers its Blueprint validators off this same broadcast, in no fixed order with us.
+    m_IntakeDeferHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UAssetWorkbenchTaskQueueSubsystem::HandleIntakeDeferred));
+}
+
+bool UAssetWorkbenchTaskQueueSubsystem::HandleIntakeDeferred(float DeltaTime)
+{
+    m_IntakeDeferHandle.Reset();
     StartQueueIntake();
+    return false;
 }
 
 void UAssetWorkbenchTaskQueueSubsystem::StartQueueIntake()
@@ -161,6 +200,21 @@ void UAssetWorkbenchTaskQueueSubsystem::Deinitialize()
     {
         FEditorDelegates::OnEditorInitialized.Remove(m_EditorInitializedHandle);
         m_EditorInitializedHandle.Reset();
+    }
+
+    if (m_FilesLoadedHandle.IsValid())
+    {
+        if (IAssetRegistry* Registry = IAssetRegistry::Get())
+        {
+            Registry->OnFilesLoaded().Remove(m_FilesLoadedHandle);
+        }
+        m_FilesLoadedHandle.Reset();
+    }
+
+    if (m_IntakeDeferHandle.IsValid())
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(m_IntakeDeferHandle);
+        m_IntakeDeferHandle.Reset();
     }
 
     if (m_HeartbeatHandle.IsValid())
@@ -329,7 +383,9 @@ void UAssetWorkbenchTaskQueueSubsystem::ProcessTaskFile(const FString& PendingPa
 
     // Taken before dispatch, an export stamped earlier than this belongs to an older run.
     const FDateTime RunStartUtc = FDateTime::UtcNow();
-    const int32 RunExitCode = DispatchRun(RunName, AssetsCsv, ExtraArgs);
+    TArray<FName> SavedPackages;
+    const int32 RunExitCode = DispatchRun(RunName, AssetsCsv, ExtraArgs, SavedPackages);
+    ValidateSavedPackages(SavedPackages);
 
     // An audit that found something still ran correctly, only Failed and EditorConflict are dispatch failures.
     const bool bHasFindings = RunExitCode == ToExitCode(EUAssetWorkbenchExitType::IssuesFound);
@@ -362,22 +418,14 @@ void UAssetWorkbenchTaskQueueSubsystem::ProcessTaskFile(const FString& PendingPa
         ExitCode = ToExitCode(EUAssetWorkbenchExitType::Failed);
     }
 
-    FString ErrorMessage;
-    if (!bDispatched)
-    {
-        ErrorMessage = FString::Printf(TEXT("Dispatch failed for run '%s'"), *RunName);
-    }
-    else if (!bOutputsComplete)
-    {
-        ErrorMessage = FString::Printf(TEXT("Only %d/%d outputs present"), PresentCount, Assets.Num());
-    }
-
-    WriteDoneFile(DonePath, ExitCode, Outputs, ErrorMessage);
-    IFileManager::Get().Delete(*ProcessingPath);
-
     // Naming the asset list only means something when the run was actually driven by one.
     const FString AssetNames = Assets.IsEmpty() ? FString() : FormatAssetNames(Assets);
     const FString Subject = AssetNames.IsEmpty() ? FString() : TEXT(": ") + AssetNames;
+
+    // A spec-driven run has no asset list, the targets it reported failing are what a failure line can name.
+    const TArray<FString>& FailedTargets = Report.GetFailedTargets();
+    const FString FailedSubject = FailedTargets.IsEmpty() ? Subject : TEXT(" for ") + FormatAssetNames(FailedTargets);
+
     FString Summary;
     if (bIsExport && bSuccess)
     {
@@ -397,7 +445,7 @@ void UAssetWorkbenchTaskQueueSubsystem::ProcessTaskFile(const FString& PendingPa
     }
     else
     {
-        Summary = FString::Printf(TEXT("%s failed%s"), *RunName, *Subject);
+        Summary = FString::Printf(TEXT("%s failed%s"), *RunName, *FailedSubject);
 
         // The notification is often all that gets read, it has to say what went wrong.
         if (!Report.GetFirstError().IsEmpty())
@@ -412,6 +460,20 @@ void UAssetWorkbenchTaskQueueSubsystem::ProcessTaskFile(const FString& PendingPa
         Summary = FString::Printf(TEXT("%s (%d warning(s), %d error(s))"), *Summary, Report.GetWarningCount(), Report.GetErrorCount());
     }
 
+    // The wrapper prints this field, so a caller reading only its output learns what the page says.
+    FString ErrorMessage;
+    if (!bDispatched)
+    {
+        ErrorMessage = Summary;
+    }
+    else if (!bOutputsComplete)
+    {
+        ErrorMessage = FString::Printf(TEXT("Only %d/%d outputs present"), PresentCount, Assets.Num());
+    }
+
+    WriteDoneFile(DonePath, ExitCode, Outputs, ErrorMessage);
+    IFileManager::Get().Delete(*ProcessingPath);
+
     // Findings are not a failure but must not read as clean either.
     Report.Finish(Summary, bSuccess && !bHasFindings);
 
@@ -421,7 +483,7 @@ void UAssetWorkbenchTaskQueueSubsystem::ProcessTaskFile(const FString& PendingPa
     }
 }
 
-int32 UAssetWorkbenchTaskQueueSubsystem::DispatchRun(const FString& RunName, const FString& AssetsCsv, const FString& ExtraArgs) const
+int32 UAssetWorkbenchTaskQueueSubsystem::DispatchRun(const FString& RunName, const FString& AssetsCsv, const FString& ExtraArgs, TArray<FName>& OutSavedPackages) const
 {
     UClass* CmdClass = FindCommandletClass(RunName);
     if (!CmdClass)
@@ -456,7 +518,60 @@ int32 UAssetWorkbenchTaskQueueSubsystem::DispatchRun(const FString& RunName, con
 
     // Queued runs keep commandlet semantics. An engine prompt would otherwise block the game thread with nobody to answer it.
     TGuardValue<bool> UnattendedGuard(GIsRunningUnattendedScript, true);
-    return Commandlet->Main(Params);
+
+    // The editor validates a saved package on the next tick, after this run has already reported.
+    FScopedDisableValidateOnSave DeferValidateOnSave;
+    const FDelegateHandle SavedHandle = UPackage::PackageSavedWithContextEvent.AddLambda([&OutSavedPackages](const FString& Filename, UPackage* Package, FObjectPostSaveContext SaveContext)
+    {
+        OutSavedPackages.AddUnique(Package->GetFName());
+    });
+
+    const int32 ExitCode = Commandlet->Main(Params);
+    UPackage::PackageSavedWithContextEvent.Remove(SavedHandle);
+    return ExitCode;
+}
+
+void UAssetWorkbenchTaskQueueSubsystem::ValidateSavedPackages(const TArray<FName>& PackageNames)
+{
+    UEditorValidatorSubsystem* Validator = GEditor ? GEditor->GetEditorSubsystem<UEditorValidatorSubsystem>() : nullptr;
+    if (!Validator || PackageNames.IsEmpty() || !GetDefault<UDataValidationSettings>()->bValidateOnSave)
+    {
+        return;
+    }
+
+    // In-memory entries, the on-disk cache has not caught up with what the run just saved.
+    FARFilter Filter;
+    Filter.PackageNames = PackageNames;
+    Filter.bIncludeOnlyOnDiskAssets = false;
+
+    TArray<FAssetData> Assets;
+    IAssetRegistry::GetChecked().GetAssets(Filter, Assets);
+
+    // The editor's own save-time settings, plus per-asset details to log and no Message Log window of its own.
+    FValidateAssetsSettings Settings;
+    Settings.bSkipExcludedDirectories = true;
+    Settings.bShowIfNoFailures = false;
+    Settings.ValidationUsecase = EDataValidationUsecase::Save;
+    Settings.bLoadAssetsForValidation = false;
+    Settings.bCollectPerAssetDetails = true;
+    Settings.bSilent = true;
+    Settings.ShowMessageLogSeverity.Reset();
+
+    FValidateAssetsResults Results;
+    Validator->ValidateAssetsWithSettings(Assets, Settings, Results);
+
+    for (const TPair<FString, FValidateAssetsDetails>& Pair : Results.AssetsDetails)
+    {
+        for (const FText& Message : Pair.Value.ValidationErrors)
+        {
+            UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("Save validation: %s: %s"), *Pair.Key, *Message.ToString());
+        }
+
+        for (const FText& Message : Pair.Value.ValidationWarnings)
+        {
+            UE_LOG(LogUAssetWorkbenchCore, Warning, TEXT("Save validation: %s: %s"), *Pair.Key, *Message.ToString());
+        }
+    }
 }
 
 UClass* UAssetWorkbenchTaskQueueSubsystem::FindCommandletClass(const FString& RunName)

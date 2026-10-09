@@ -719,16 +719,36 @@ namespace
     }
 }
 
+namespace
+{
+    UAssetWorkbench::FRunReport* GActiveRunReport = nullptr;
+}
+
 UAssetWorkbench::FRunReport::FRunReport(const FString& RunName)
     : m_RunName(RunName)
 {
     FMessageLog(FName(MessageLogName)).NewPage(FText::FromString(RunName));
     GLog->AddOutputDevice(this);
+    GActiveRunReport = this;
 }
 
 UAssetWorkbench::FRunReport::~FRunReport()
 {
     GLog->RemoveOutputDevice(this);
+    if (GActiveRunReport == this)
+    {
+        GActiveRunReport = nullptr;
+    }
+}
+
+UAssetWorkbench::FRunReport* UAssetWorkbench::FRunReport::GetActive()
+{
+    return GActiveRunReport;
+}
+
+void UAssetWorkbench::FRunReport::AddFailedTarget(const FString& Target)
+{
+    m_FailedTargets.AddUnique(Target);
 }
 
 void UAssetWorkbench::FRunReport::Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category)
@@ -776,4 +796,71 @@ void UAssetWorkbench::FRunReport::Finish(const FString& Summary, bool bSuccess)
     {
         Log.Notify(FText::FromString(Summary), EMessageSeverity::Info, true);
     }
+}
+
+UAssetWorkbench::FFailureReasonCapture::FFailureReasonCapture()
+{
+    GLog->AddOutputDevice(this);
+}
+
+UAssetWorkbench::FFailureReasonCapture::~FFailureReasonCapture()
+{
+    GLog->RemoveOutputDevice(this);
+}
+
+void UAssetWorkbench::FFailureReasonCapture::Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category)
+{
+    // FMessageDialog logs this line from GWarn under no category of ours, it is the only trace an auto-answered prompt leaves.
+    static const FString DialogClosedPrefix = TEXT("Message dialog closed");
+    static const FString DialogTextMarker = TEXT(", text: ");
+
+    // Runs dispatch on the game thread, a line from any other thread belongs to something else.
+    if (!IsInGameThread())
+    {
+        return;
+    }
+
+    const FString Line(Message);
+    if (m_DialogText.IsEmpty() && Line.StartsWith(DialogClosedPrefix))
+    {
+        const int32 TextStart = Line.Find(DialogTextMarker);
+        if (TextStart != INDEX_NONE)
+        {
+            m_DialogText = Line.Mid(TextStart + DialogTextMarker.Len()).TrimStartAndEnd();
+        }
+        return;
+    }
+
+    const bool bError = Verbosity == ELogVerbosity::Error || Verbosity == ELogVerbosity::Fatal;
+    if (m_FirstError.IsEmpty() && bError && IsWorkbenchCategory(Category))
+    {
+        m_FirstError = Line;
+    }
+}
+
+FString UAssetWorkbench::FFailureReasonCapture::GetReason() const
+{
+    return m_DialogText.IsEmpty() ? m_FirstError : m_DialogText;
+}
+
+void UAssetWorkbench::ReportTargetFailure(const FString& RunName, const FString& Target, const FString& Reason)
+{
+    const FString ShownReason = Reason.IsEmpty() ? FString(TEXT("nothing was logged, read the lines above")) : Reason;
+    UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("%s failed for %s. Reason: %s"), *RunName, *Target, *ShownReason);
+
+    if (FRunReport* Active = FRunReport::GetActive())
+    {
+        Active->AddFailedTarget(Target);
+    }
+}
+
+FString UAssetWorkbench::DescribeSpecTarget(const TSharedPtr<FJsonObject>& Entry)
+{
+    FString AssetPath;
+    if (Entry.IsValid() && Entry->TryGetStringField(TEXT("AssetPath"), AssetPath))
+    {
+        return AssetPath;
+    }
+
+    return TEXT("a target with no AssetPath");
 }

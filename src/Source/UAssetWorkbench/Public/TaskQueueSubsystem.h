@@ -31,6 +31,9 @@ private:
     bool HeartbeatTick(float DeltaTime);
 
     void HandleEditorInitialized(double StartupSeconds);
+    void WaitForAssetDiscovery();
+    void HandleFilesLoaded();
+    bool HandleIntakeDeferred(float DeltaTime);
     void StartQueueIntake();
     void SweepStaleProcessing() const;
 
@@ -39,7 +42,10 @@ private:
     void ProcessTaskFile(const FString& PendingPath);
 
     // Returns the commandlet's own exit code, so an audit reporting IssuesFound is not read as failure.
-    int32 DispatchRun(const FString& RunName, const FString& AssetsCsv, const FString& ExtraArgs) const;
+    int32 DispatchRun(const FString& RunName, const FString& AssetsCsv, const FString& ExtraArgs, TArray<FName>& OutSavedPackages) const;
+
+    // Runs the save-time validation DispatchRun held back, so its findings land on the run's own page.
+    static void ValidateSavedPackages(const TArray<FName>& PackageNames);
 
     static UClass* FindCommandletClass(const FString& RunName);
     static void WriteDoneFile(const FString& DoneFilePath, int32 ExitCode, const TArray<FString>& Outputs, const FString& ErrorMessage);
@@ -48,7 +54,9 @@ private:
     static void FinishToast(TSharedPtr<SNotificationItem> Item, bool bSuccess, const FString& Summary);
 
     FTSTicker::FDelegateHandle m_HeartbeatHandle;
+    FTSTicker::FDelegateHandle m_IntakeDeferHandle;
     FDelegateHandle m_EditorInitializedHandle;
+    FDelegateHandle m_FilesLoadedHandle;
     FDelegateHandle m_DirectoryWatcherHandle;
     FString m_WatchedDirectory;
     bool m_bProcessing = false;

@@ -5,6 +5,7 @@
 #   python editor_session.py close --owner <name> <index>
 #   python editor_session.py release --owner <name> [--uproject <path>]
 #   python editor_session.py list
+#   python editor_session.py running [--uproject <path>]
 
 import json
 import os
@@ -19,6 +20,7 @@ LOCK_PATH = REGISTRY_DIR / "editor_sessions.lock"
 LOCK_TIMEOUT_SEC = 10.0
 
 EXIT_OK = 0
+EXIT_NONE = 1
 EXIT_USAGE = 2
 EXIT_REFUSED = 3
 
@@ -109,6 +111,17 @@ def cmd_launch(owner, uproject, extra_args):
     return EXIT_OK
 
 
+# taskkill /F skips the editor's shutdown, which is what deletes the heartbeat file. Left behind, its pid can be
+# handed to an unrelated process and read as a live editor.
+def clear_heartbeat(session):
+    alive = Path(session["uproject"]).parent / "Saved" / "UAssetWorkbenchTaskQueue" / ".alive"
+    try:
+        if alive.read_text(encoding="utf-8").strip() == str(session["pid"]):
+            alive.unlink()
+    except OSError:
+        pass
+
+
 def cmd_close(owner, index):
     with RegistryLock():
         sessions = load_live_sessions()
@@ -123,6 +136,7 @@ def cmd_close(owner, index):
 
         # /T takes the editor's own children (shader workers, live coding console) down with it.
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(session["pid"])], capture_output=True)
+        clear_heartbeat(session)
         sessions.remove(session)
         save_sessions(sessions)
 
@@ -138,6 +152,7 @@ def cmd_release(owner, uproject):
         mine = [s for s in on_project if s["owner"] == owner]
         for session in mine:
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(session["pid"])], capture_output=True)
+            clear_heartbeat(session)
             sessions.remove(session)
             print("CLOSED {}".format(describe(session)))
         save_sessions(sessions)
@@ -158,6 +173,18 @@ def cmd_list():
     if not sessions:
         print("no registered editor is running")
     return EXIT_OK
+
+
+# run_commandlet.sh asks this while the heartbeat is missing. A registered editor that is still starting has
+# no heartbeat yet, and a standalone commandlet would then write the assets that editor is loading.
+def cmd_running(uproject):
+    project_dir = normalize_dir(Path(uproject).resolve().parent)
+    with RegistryLock():
+        sessions = load_live_sessions()
+    on_project = [s for s in sessions if normalize_dir(Path(s["uproject"]).parent) == project_dir]
+    for session in on_project:
+        print(describe(session))
+    return EXIT_OK if on_project else EXIT_NONE
 
 
 def find_session(index):
@@ -189,6 +216,8 @@ def main(argv):
 
     if command == "list":
         return cmd_list()
+    if command == "running":
+        return cmd_running(uproject)
     if not owner:
         print("usage: --owner <name> is required, it is who may close the editor later")
         return EXIT_USAGE

@@ -112,7 +112,10 @@ bool UAssetWorkbench::IsLiveEditorPresent()
         return false;
     }
 
-    return FPlatformProcess::IsApplicationRunning(static_cast<uint32>(EditorPid));
+    // A killed editor leaves the file behind and its pid goes to the next process, so the pid alone is not the editor.
+    const uint32 ProcessId = static_cast<uint32>(EditorPid);
+    const bool bEditorProcess = FPaths::GetBaseFilename(FPlatformProcess::GetApplicationName(ProcessId)).StartsWith(TEXT("UnrealEditor"));
+    return FPlatformProcess::IsApplicationRunning(ProcessId) && bEditorProcess;
 }
 
 static int32 GInternalDispatchDepth = 0;

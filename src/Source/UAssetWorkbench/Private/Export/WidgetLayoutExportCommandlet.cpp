@@ -29,6 +29,17 @@
 
 namespace
 {
+    // The value doubles as its own default. A null default drops every zero field, and an import of "()" then keeps
+    // whatever the fresh widget or slot was constructed with.
+    FString ExportFullPropertyText(const FProperty* Property, UObject* Owner)
+    {
+        const void* Address = Property->ContainerPtrToValuePtr<void>(Owner);
+
+        FString Value;
+        Property->ExportTextItem_Direct(Value, Address, Address, Owner, PPF_None);
+        return Value;
+    }
+
     FString InterpModeToString(ERichCurveInterpMode Mode)
     {
         switch (Mode)
@@ -235,8 +246,7 @@ TSharedPtr<FJsonObject> UWidgetLayoutExportCommandlet::ExportWidget(UWidget* Wid
                 continue;
             }
 
-            FString Value;
-            Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(Widget), nullptr, Widget, PPF_None);
+            const FString Value = ExportFullPropertyText(Prop, Widget);
             if (!Value.IsEmpty())
             {
                 Props->SetStringField(Prop->GetName(), Value);
@@ -295,8 +305,7 @@ TSharedPtr<FJsonObject> UWidgetLayoutExportCommandlet::ExportSlotProperties(UPan
             continue;
         }
 
-        FString Value;
-        Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(Slot), nullptr, Slot, PPF_None);
+        const FString Value = ExportFullPropertyText(Prop, Slot);
         if (!Value.IsEmpty())
         {
             SlotObj->SetStringField(Prop->GetName(), Value);
