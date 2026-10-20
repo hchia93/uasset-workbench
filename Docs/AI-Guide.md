@@ -246,6 +246,7 @@ Audit。
 | 两次导出做 diff 时 `K2Node_MathExpression` 一片红 | 它每次加载重建内部图并换 `NodeGuid`，`SubGraphs` 子树的差是既有非确定性不是回归。比对时排除这棵子树 |
 | `WidgetLayoutImport` 是整树替换 | spec 必须描述完整的树，不是增量补丁 |
 | 用 `WidgetLayoutImport` 改控件名 | 整树替换靠同名保 GUID，改名会让 widget animation 的绑定悬空且不报错。控件改名走 `EditBlueprint` 的 `Widgets` 的 `Rename` |
+| 拿 `ExporterVersion` 早于 2.6.10 的 `WidgetLayoutExport` 产物做 round-trip | 旧导出不带 `UWidget` 自身的属性，导回后 shear 等 `RenderTransform` 归零，`Visibility` / `RenderOpacity` 落成控件类的构造默认值。先重新导出 |
 | `WidgetLayoutImport` 退出码 1 但资产其实写进去了 | 引擎会改写 commandlet 的退出码。判断成败以日志里的 `Imported layout into ...` 为准，别只看退出码 |
 | 以为 `Delete` 一个面板只删它自己 | 面板还挂着子控件时默认拒绝并报出子控件名。确实要连子树一起删才加 `Recursive` |
 | 树上已有根时用 `AsRoot` 换根 | `Add` 一律报错。`Reparent` 只在旧根是只包着该控件的面板时放行，旧根随之删除。拆根容器先 `Delete` 或 `Reparent` 移走其他子控件，再对留下的那个 `Reparent` 带 `AsRoot` |

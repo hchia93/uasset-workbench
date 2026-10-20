@@ -119,6 +119,8 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 `WidgetLayoutExport` 的产物可以直接当 Import 的输入，Import 只读它认识的字段，其余原样忽略。
 
+`Properties` 里没写的属性取控件类的构造默认值，不沿用旧树上的值。`ExporterVersion` 早于 2.6.10 的导出不带 `UWidget` 自身的属性，导回后 `RenderTransform` 归零，`Visibility` / `RenderOpacity` / `bIsVariable` 落成构造默认值，先重新导出再用。
+
 改布局的常规做法: 先 Export 拿到当前树，改 JSON，再 Import 写回。
 
 ### 行为约定

@@ -225,23 +225,23 @@ TSharedPtr<FJsonObject> UWidgetLayoutExportCommandlet::ExportWidget(UWidget* Wid
 
     Obj->SetStringField(TEXT("Name"), Widget->GetName());
     Obj->SetStringField(TEXT("Class"), Widget->GetClass()->GetName());
-    Obj->SetStringField(TEXT("Visibility"), StaticEnum<ESlateVisibility>()->GetNameStringByValue(static_cast<int64>(Widget->GetVisibility())));
-    Obj->SetNumberField(TEXT("RenderOpacity"), Widget->GetRenderOpacity());
 
-    if (!Widget->GetIsEnabled())
-    {
-        Obj->SetBoolField(TEXT("IsEnabled"), false);
-    }
-
-    // Subclass-specific properties (properties declared below UWidget)
+    // The walk includes UWidget itself, which declares RenderTransform, Visibility, RenderOpacity and bIsVariable.
     TSharedPtr<FJsonObject> Props = MakeShared<FJsonObject>();
     UClass* CurrentClass = Widget->GetClass();
-    while (CurrentClass && CurrentClass != UWidget::StaticClass())
+    while (CurrentClass && CurrentClass->IsChildOf(UWidget::StaticClass()))
     {
         for (TFieldIterator<FProperty> PropIt(CurrentClass, EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
         {
             FProperty* Prop = *PropIt;
-            if (Prop->HasAnyPropertyFlags(CPF_Transient | CPF_Deprecated))
+            // TextExportTransient covers Slot, which AddChild rebuilds on import.
+            if (Prop->HasAnyPropertyFlags(CPF_Transient | CPF_Deprecated | CPF_TextExportTransient))
+            {
+                continue;
+            }
+
+            // Designer bindings live on the Blueprint. The delegate property itself only exports a placeholder.
+            if (Prop->IsA<FDelegateProperty>() || Prop->IsA<FMulticastDelegateProperty>())
             {
                 continue;
             }

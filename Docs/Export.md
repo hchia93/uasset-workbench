@@ -453,6 +453,15 @@ Montage 没有 sync marker，那是 sequence 独有的。
 | `Animations[]` | 见下 |
 | `Graphs[]` | EdGraph，形状见 [EdGraph 通用形状](#edgraph-通用形状) |
 
+`WidgetTree` 每个节点。
+
+| 字段 | 含义 |
+| --- | --- |
+| `Name` / `Class` | 控件名，控件类名 |
+| `Properties` | 控件类一路到 `UWidget` 本身声明的属性，`RenderTransform` / `RenderTransformPivot` / `Visibility` / `RenderOpacity` / `bIsEnabled` / `bIsVariable` 都在这里。transient、`TextExportTransient`（如 `Slot`）与委托属性不出 |
+| `Slot` | 该控件在父容器里的 slot 属性，`SlotClass` 是 slot 类名 |
+| `Children[]` | panel 才有 |
+
 struct 属性写出全部字段，零值也写，形如 `Offsets=(Left=0.000000,Top=0.000000,Right=0.000000,Bottom=0.000000)`。导出喂回 `WidgetLayoutImport` 时零值照样落盘。
 
 `Animations[]` 每项。

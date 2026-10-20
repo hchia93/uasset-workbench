@@ -4,6 +4,15 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.6.10
+
+- 修复 `WidgetLayoutExport` 漏掉 `UWidget` 自身声明的属性，`RenderTransform` / `RenderTransformPivot` / `bIsVariable` / `Clipping` 等进 `Properties`，导出再导入不再把 shear 清零
+- `WidgetLayoutExport` 的 `Visibility` / `RenderOpacity` / `IsEnabled` 从节点顶层挪进 `Properties`。`WidgetLayoutImport` 只读 `Properties`，顶层那份往返时被忽略，CanvasPanel 的 `Visibility` 会落成构造默认的 `SelfHitTestInvisible`
+- `WidgetLayoutExport` 不再导出委托属性与 `TextExportTransient` 属性，前者只有占位值，后者是 `AddChild` 重建的 `Slot`
+- 修复 `ReparentBlueprint` 改到新父类时编辑器崩溃在 `FBlueprintCompileReinstancer::PreCreateSubObjectsForReinstantiation`。改走编辑器 Reparent 的同一套流程，不再手动 `SetSuperStruct`，编译出错时不保存
+- `ReparentBlueprint` 的 `-oldclass` / `-newclass` 收裸类名、带该类 C++ 前缀的类名与完整路径。修复 `U` 前缀报 `Blueprint parent mismatch`，`-newclass` 带前缀报 `New class not found`
+- AI-Guide 补上拿 2.6.10 之前的导出做 round-trip 的陷阱
+
 ### 2.6.9
 
 - 新增 `FixupRedirector`，重存 redirector 的每个引用方让它直接指向目标，再删掉没人引用的 redirector。收 redirector 包或目录，不弹引擎的报告窗，编辑器内队列里能跑

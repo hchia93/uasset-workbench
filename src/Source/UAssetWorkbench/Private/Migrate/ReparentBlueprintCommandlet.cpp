@@ -4,12 +4,49 @@
 
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
 #include "UObject/Class.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
+
+namespace
+{
+    // Accepts the bare name, the name with the class's own C++ prefix, or the full path.
+    bool NamesClass(const UClass* Class, const FString& Name)
+    {
+        if (Name == Class->GetName() || Name == Class->GetPathName())
+        {
+            return true;
+        }
+
+        return Name == FString(Class->GetPrefixCPP()) + Class->GetName();
+    }
+
+    UClass* ResolveClass(const FString& Name)
+    {
+        if (Name.Contains(TEXT("/")))
+        {
+            return LoadObject<UClass>(nullptr, *Name);
+        }
+
+        if (UClass* Found = FindFirstObject<UClass>(*Name, EFindFirstObjectOptions::ExactClass))
+        {
+            return Found;
+        }
+
+        if (Name.Len() < 2)
+        {
+            return nullptr;
+        }
+
+        UClass* Unprefixed = FindFirstObject<UClass>(*Name.Mid(1), EFindFirstObjectOptions::ExactClass);
+        return Unprefixed && NamesClass(Unprefixed, Name) ? Unprefixed : nullptr;
+    }
+}
 
 UReparentBlueprintCommandlet::UReparentBlueprintCommandlet()
 {
@@ -95,36 +132,43 @@ bool UReparentBlueprintCommandlet::ReparentBlueprint(
         return false;
     }
 
-    FString CurrentParentName = CurrentParent->GetName();
-    bool bNameMatches = (CurrentParentName == OldClassName);
-
-    // Allow mismatched A prefix, AMyActor and MyActor name the same class here.
-    if (!bNameMatches && OldClassName.StartsWith(TEXT("A")))
+    if (!NamesClass(CurrentParent, OldClassName))
     {
-        FString OldClassNameNoA = OldClassName.Mid(1);
-        bNameMatches = (CurrentParentName == OldClassNameNoA);
-    }
-
-    if (!bNameMatches)
-    {
-        UE_LOG(LogUAssetWorkbenchMigrator, Warning, TEXT("Blueprint parent mismatch (expected %s, got %s): %s"),
-               *OldClassName, *CurrentParentName, *BlueprintPath);
+        UE_LOG(LogUAssetWorkbenchMigrator, Warning, TEXT("Blueprint parent mismatch (expected %s, got %s): %s"), *OldClassName, *CurrentParent->GetName(), *BlueprintPath);
         return false;
     }
 
-    // Find the new class
-    UClass* NewParentClass = FindFirstObject<UClass>(*NewClassName, EFindFirstObjectOptions::ExactClass);
+    UClass* NewParentClass = ResolveClass(NewClassName);
     if (!NewParentClass)
     {
         UE_LOG(LogUAssetWorkbenchMigrator, Warning, TEXT("New class not found: %s"), *NewClassName);
         return false;
     }
 
-    // Reparent by modifying the Blueprint's parent class
+    // Same sequence as the editor's reparent. The compiler moves the generated class onto the new super itself,
+    // setting it by hand first leaves the reinstancer reading old instances with the new layout.
+    Blueprint->Modify();
     Blueprint->ParentClass = NewParentClass;
-    GeneratedClass->SetSuperStruct(NewParentClass);
 
-    if (UAssetWorkbench::CompileAndSavePackage(Blueprint))
+    if (Blueprint->SimpleConstructionScript)
+    {
+        Blueprint->SimpleConstructionScript->ValidateSceneRootNodes();
+    }
+
+    FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+    FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+    GeneratedClass->PrepareToConformSparseClassData(NewParentClass->GetSparseClassDataStruct());
+
+    const EBlueprintCompileOptions CompileOptions = EBlueprintCompileOptions::SkipSave | EBlueprintCompileOptions::UseDeltaSerializationDuringReinstancing | EBlueprintCompileOptions::SkipNewVariableDefaultsDetection;
+    FKismetEditorUtilities::CompileBlueprint(Blueprint, CompileOptions);
+
+    if (Blueprint->Status == BS_Error)
+    {
+        UE_LOG(LogUAssetWorkbenchMigrator, Error, TEXT("Compile failed after reparenting, package not saved: %s"), *BlueprintPath);
+        return false;
+    }
+
+    if (UAssetWorkbench::CompileAndSavePackage(Blueprint, /* bCompileBlueprint */ false))
     {
         UE_LOG(LogUAssetWorkbenchMigrator, Display, TEXT("Successfully reparented: %s"), *BlueprintPath);
         return true;

@@ -110,6 +110,10 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     '-blueprints="/Game/Blueprints/BP_Foo" -oldclass="AOldActor" -newclass="ANewActor"'
 ```
 
+`-oldclass` / `-newclass` 收三种写法: 裸类名 `OldActor`、带该类自己 C++ 前缀的 `AOldActor` / `UOldWidget`、完整路径 `/Script/MyModule.OldActor`。前缀与类不符时按不匹配处理。
+
+改父类走编辑器 Reparent 的同一套流程，编译出错时不保存，退 1。
+
 `ResaveAsset`。
 
 ```bash
