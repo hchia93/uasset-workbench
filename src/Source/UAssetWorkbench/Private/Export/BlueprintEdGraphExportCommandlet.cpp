@@ -95,6 +95,31 @@ namespace
         return MakeShared<FJsonValueObject>(TrackObj);
     }
 
+    // Keys print in the shape EditBlueprint's Timelines section takes back.
+    TSharedPtr<FJsonValue> MakeTimelineFloatTrackEntry(const FTTFloatTrack& Track)
+    {
+        TSharedPtr<FJsonValue> Entry = MakeTimelineTrackEntry(Track.GetTrackName(), Track.CurveFloat);
+        const TSharedPtr<FJsonObject>& TrackObj = Entry->AsObject();
+        TrackObj->SetBoolField(TEXT("External"), Track.bIsExternalCurve);
+        if (!Track.CurveFloat)
+        {
+            return Entry;
+        }
+
+        TArray<TSharedPtr<FJsonValue>> KeysArray;
+        for (const FRichCurveKey& Key : Track.CurveFloat->FloatCurve.GetConstRefOfKeys())
+        {
+            TSharedPtr<FJsonObject> KeyObj = MakeShared<FJsonObject>();
+            KeyObj->SetNumberField(TEXT("Time"), Key.Time);
+            KeyObj->SetNumberField(TEXT("Value"), Key.Value);
+            KeyObj->SetStringField(TEXT("InterpMode"), StaticEnum<ERichCurveInterpMode>()->GetNameStringByValue(static_cast<int64>(Key.InterpMode.GetValue())));
+            KeysArray.Add(MakeShared<FJsonValueObject>(KeyObj));
+        }
+        TrackObj->SetArrayField(TEXT("Keys"), KeysArray);
+
+        return Entry;
+    }
+
     // Editor-side variable metadata lives on NewVariables, the generated FProperty only carries the compiled result.
     void AppendVariableMetadata(const FBPVariableDescription& Description, const TSharedPtr<FJsonObject>& VarObj)
     {
@@ -407,7 +432,7 @@ TSharedPtr<FJsonObject> UBlueprintEdGraphExportCommandlet::ExportBlueprint(UBlue
         TArray<TSharedPtr<FJsonValue>> FloatTracksArray;
         for (const FTTFloatTrack& Track : Timeline->FloatTracks)
         {
-            FloatTracksArray.Add(MakeTimelineTrackEntry(Track.GetTrackName(), Track.CurveFloat));
+            FloatTracksArray.Add(MakeTimelineFloatTrackEntry(Track));
         }
         if (FloatTracksArray.Num() > 0)
         {

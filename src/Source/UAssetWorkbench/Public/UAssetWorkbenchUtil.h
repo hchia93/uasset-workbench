@@ -4,6 +4,7 @@
 #include "Misc/OutputDevice.h"
 
 class FJsonObject;
+enum ERichCurveInterpMode : int;
 
 namespace UAssetWorkbench
 {
@@ -66,6 +67,9 @@ namespace UAssetWorkbench
 
     // The AssetPath a spec target names, which is what its failure line reports.
     FString DescribeSpecTarget(const TSharedPtr<FJsonObject>& Entry);
+
+    // Exports print the enum name, RCIM_Linear. The bare word is taken too, the spec reads better.
+    bool ReadRichCurveInterpMode(const FString& Text, ERichCurveInterpMode& OutMode);
 
     // Parse "-<ParamName>A,B,C" out of a commandlet param string. Trims quotes and whitespace.
     // ParamName carries its own leading dash and trailing equals, e.g. TEXT("-blueprints=").

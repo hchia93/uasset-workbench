@@ -15,7 +15,7 @@
 namespace
 {
     // Fixed order, not spec key order: Graph reads components and variables the earlier writers made,
-    // and Layout reads the node Ids Graph registered.
+    // Timelines reads a timeline Graph may have just added, and Layout reads the node Ids Graph registered.
     TArray<TUniquePtr<IBlueprintWriter>> MakeWriters()
     {
         TArray<TUniquePtr<IBlueprintWriter>> Writers;
@@ -29,6 +29,7 @@ namespace
         Writers.Add(MakeBlueprintInterfaceWriter());
         Writers.Add(MakeBlueprintStateMachineWriter());
         Writers.Add(MakeBlueprintGraphWriter());
+        Writers.Add(MakeBlueprintTimelineWriter());
         Writers.Add(MakeBlueprintLayoutWriter());
         return Writers;
     }
@@ -167,7 +168,7 @@ bool UEditBlueprintCommandlet::ApplyTarget(const TSharedPtr<FJsonObject>& Entry,
 
     if (Matched == 0)
     {
-        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s writes nothing. Expected one of Components, Widgets, WidgetAnimations, Variables, Defaults, Functions, Dispatchers, Interfaces, StateMachines, Graph, Layout"), *AssetPath);
+        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s writes nothing. Expected one of Components, Widgets, WidgetAnimations, Variables, Defaults, Functions, Dispatchers, Interfaces, StateMachines, Graph, Timelines, Layout"), *AssetPath);
         return false;
     }
 

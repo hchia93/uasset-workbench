@@ -1,5 +1,6 @@
 #include "Edit/AnimAssetWriter.h"
 #include "UAssetWorkbenchModule.h"
+#include "UAssetWorkbenchUtil.h"
 
 #include "Animation/AnimCurveTypes.h"
 #include "Animation/AnimData/CurveIdentifier.h"
@@ -61,26 +62,6 @@ namespace
         }
 
         return false;
-    }
-
-    // Exports print the enum name, RCIM_Linear. The bare word is taken too, the spec reads better.
-    bool ReadInterpMode(const FString& Text, ERichCurveInterpMode& OutMode)
-    {
-        const UEnum* Enum = StaticEnum<ERichCurveInterpMode>();
-
-        int64 Value = Enum->GetValueByNameString(Text);
-        if (Value == INDEX_NONE)
-        {
-            Value = Enum->GetValueByNameString(FString::Printf(TEXT("RCIM_%s"), *Text));
-        }
-
-        if (Value == INDEX_NONE)
-        {
-            return false;
-        }
-
-        OutMode = static_cast<ERichCurveInterpMode>(Value);
-        return true;
     }
 
     // An unresolvable curve name is the most common spec error, so failures print what was there.
@@ -271,7 +252,7 @@ namespace
                 if (KeyDesc->TryGetStringField(TEXT("InterpMode"), InterpText))
                 {
                     ERichCurveInterpMode InterpMode = RCIM_Linear;
-                    if (!ReadInterpMode(InterpText, InterpMode))
+                    if (!UAssetWorkbench::ReadRichCurveInterpMode(InterpText, InterpMode))
                     {
                         UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: unknown InterpMode '%s'. Expected Linear, Constant, Cubic or None"), *Context.AssetPath, *InterpText);
                         return false;

@@ -5,6 +5,7 @@
 #include "AssetRegistry/ARFilter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Curves/RealCurve.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/Blueprint.h"
@@ -863,4 +864,23 @@ FString UAssetWorkbench::DescribeSpecTarget(const TSharedPtr<FJsonObject>& Entry
     }
 
     return TEXT("a target with no AssetPath");
+}
+
+bool UAssetWorkbench::ReadRichCurveInterpMode(const FString& Text, ERichCurveInterpMode& OutMode)
+{
+    const UEnum* Enum = StaticEnum<ERichCurveInterpMode>();
+
+    int64 Value = Enum->GetValueByNameString(Text);
+    if (Value == INDEX_NONE)
+    {
+        Value = Enum->GetValueByNameString(FString::Printf(TEXT("RCIM_%s"), *Text));
+    }
+
+    if (Value == INDEX_NONE)
+    {
+        return false;
+    }
+
+    OutMode = static_cast<ERichCurveInterpMode>(Value);
+    return true;
 }

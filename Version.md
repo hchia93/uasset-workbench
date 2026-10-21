@@ -4,6 +4,12 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.6.11
+
+- `EditBlueprint` 新增 `Timelines`，改既有 timeline 的长度，整条替换 float 轨道的关键帧。读外部曲线资产的轨道拒写，增删轨道与 vector / color / event 轨道不在范围内
+- `BlueprintEdGraphExport` 的 float 轨道带出 `Keys` 与 `External`，导出可以原样喂回 `Timelines`
+- `EditAnimAsset` 的 `Curves` 与 `Timelines` 共用同一个 `InterpMode` 解析
+
 ### 2.6.10
 
 - 修复 `WidgetLayoutExport` 漏掉 `UWidget` 自身声明的属性，`RenderTransform` / `RenderTransformPivot` / `bIsVariable` / `Clipping` 等进 `Properties`，导出再导入不再把 shear 清零

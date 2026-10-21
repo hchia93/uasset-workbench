@@ -36,15 +36,16 @@ queue 路径: run 摘要、toast 与 done 文件的 `Error` 字段写 `<RunName>
 | `Interfaces` | `FBlueprintInterfaceWriter` | `ClassSettingsMode` | 实现的接口 |
 | `StateMachines` | `FBlueprintStateMachineWriter` | `GraphMode` | 状态机、state、transition |
 | `Graph` | `FBlueprintGraphWriter` | `GraphMode` | 节点、节点属性、绑定、pin 默认值、连线 |
+| `Timelines` | `FBlueprintTimelineWriter` | 无 | 既有 timeline 的长度与 float 轨道关键帧 |
 | `Layout` | `FBlueprintLayoutWriter` | 无（纯外观） | 节点位置 |
 
 执行顺序固定，与 spec 里的 key 顺序无关：
 
 ```
-Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Layout
+Components -> Widgets -> WidgetAnimations -> Variables -> Defaults -> Functions -> Dispatchers -> Interfaces -> StateMachines -> Graph -> Timelines -> Layout
 ```
 
-后一个依赖前一个的结果。`WidgetAnimations` 按控件名寻址，排在 `Widgets` 之后，同一次运行里改完名的控件动画能跟上。`Graph` 能引用同一次运行里新建的组件和变量，也能点名 `Functions` 注册的函数入口与 result 节点，`Layout` 能用 `Graph` 给节点的 `Id` 寻址，这是十一个 writer 合成一个 commandlet 的原因。
+后一个依赖前一个的结果。`WidgetAnimations` 按控件名寻址，排在 `Widgets` 之后，同一次运行里改完名的控件动画能跟上。`Graph` 能引用同一次运行里新建的组件和变量，也能点名 `Functions` 注册的函数入口与 result 节点，`Timelines` 能改 `Graph` 刚建出的 timeline，`Layout` 能用 `Graph` 给节点的 `Id` 寻址，这是十二个 writer 合成一个 commandlet 的原因。
 
 ### 调用
 
@@ -469,7 +470,7 @@ BP 自己声明的组件属性挂在 SCS node 的 template 上，继承来的 na
 
 带 `MD_NativeMakeFunction` 的结构体（`FVector` / `FRotator` / `FTransform` 等）编译时会被引擎换成对应的 `Make X` / `Break X` 函数调用节点，pin 默认值与连线一并搬过去，导出里看到的是 `K2Node_CallFunction`。
 
-`Timeline` 同时建出 `UTimelineTemplate`，轨道不在范围内，要加轨道另走 Details 面板。
+`Timeline` 同时建出 `UTimelineTemplate`。加轨道不在范围内，另走 Details 面板，既有 float 轨道的关键帧与 timeline 长度走 `Timelines`。
 
 `CreateDelegate` 的 `OutputDelegate` 要在同一个 spec 的 `Links` 里接到 `AddDelegate` 的 `Delegate` pin。连上之前节点一旦重建就会清掉函数名，所以不要对它写 `NodeProperties`。签名在编译时校验，对不上报 Signature Error。
 
@@ -630,6 +631,27 @@ Op: `Add` / `Remove`，用 `Interface` 点名接口，不用 `Name`。
 `Add` 建接口要求的函数图。带返回值的函数进 `InterfaceFunction` 图，纯事件签名的函数直接在事件图里当事件放，不建图。
 
 `Remove` 的 `PreserveFunctions` 为真时把接口函数转成普通函数留下，默认为假连图一起删。
+
+### Timelines
+
+改既有 timeline 的长度与 float 轨道的关键帧。timeline 与轨道都按 `Name` 寻址，与 `BlueprintEdGraphExport` 的 `Timelines[].Name` / `FloatTracks[].Name` 一致，匹配不到报出现有的名字。
+
+```json
+"Timelines": [
+  { "Name": "DeathTimeline", "Length": 4.0,
+    "FloatTracks": [
+      { "Name": "FadeToBlack",
+        "Keys": [ { "Time": 3.5, "Value": 0.0 }, { "Time": 4.0, "Value": 1.0, "InterpMode": "Cubic" } ] }
+    ] }
+]
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `Length` | 秒，正数。`Length` 与 `FloatTracks` 至少给一个 |
+| `FloatTracks[].Keys` | 整条替换。`Time` 必须递增，`InterpMode` 与 `EditAnimAsset` 的 `Curves` 同一套词，省略取 `RCIM_Linear`。tangent 按 auto 重算 |
+
+导出的 `FloatTracks[]` 带 `Keys`，可以原样喂回来。导出里 `External: true` 的轨道读的是共享曲线资产，拒写，改那个资产本身。增删轨道与 vector / color / event 轨道不在范围内。
 
 ### Layout
 

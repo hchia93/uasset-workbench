@@ -241,7 +241,7 @@ Anim 节点专属键。
 | `ImplementedInterfaces[]` / `ImplementedInterfaceCount` | BP 的 Implements Interface 列表，每项 `Name` / `Path` |
 | `Variables[]` / `VariableCount` / `UserVariableCount` | 生成类的成员属性，并入 `NewVariables` 的元数据: `Category` / `PinType` / `SubType` / `Container` / `ValueType` / `Guid` 与各 flag |
 | `EventDispatchers[]` / `EventDispatcherCount` | `Name` / `Category` / `Signature`，同时也出现在 `Variables[]` 里 |
-| `Timelines[]` / `TimelineCount` | 长度、播放 flag、float / vector / color / event 轨道与曲线路径 |
+| `Timelines[]` / `TimelineCount` | 长度、播放 flag、float / vector / color / event 轨道与曲线路径。float 轨道另带 `Keys` 与 `External` |
 | `Components[]` | SCS 组件树 |
 | `InheritedComponents[]` | 父 BP 的 SCS 组件，不在 `Components[]` 里但 `Defaults` spec 的 `Component` 可以点名 |
 | `InheritedComponentOverrides[]` | 本 BP 没声明的组件上的 delta |

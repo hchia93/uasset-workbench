@@ -55,6 +55,7 @@ TUniquePtr<IBlueprintWriter> MakeBlueprintFunctionWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintDispatcherWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintInterfaceWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintStateMachineWriter();
+TUniquePtr<IBlueprintWriter> MakeBlueprintTimelineWriter();
 
 namespace BlueprintEdit
 {
