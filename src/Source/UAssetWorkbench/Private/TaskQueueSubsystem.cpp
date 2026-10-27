@@ -108,6 +108,15 @@ bool UAssetWorkbenchTaskQueueSubsystem::ShouldCreateSubsystem(UObject* Outer) co
     {
         return false;
     }
+
+    // An automation run is an editor process too, but it never takes tasks and exits on its own. Its heartbeat
+    // outlived the run and made the wrapper queue a task nobody would pick up.
+    const FString CommandLine = FCommandLine::Get();
+    const bool bAutomationRun = CommandLine.Contains(TEXT("-TestExit=")) || CommandLine.Contains(TEXT("Automation RunTests"));
+    if (bAutomationRun)
+    {
+        return false;
+    }
     return Super::ShouldCreateSubsystem(Outer);
 }
 
@@ -592,6 +601,7 @@ void UAssetWorkbenchTaskQueueSubsystem::WriteDoneFile(const FString& DoneFilePat
 {
     TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
     Root->SetNumberField(UAssetWorkbenchTaskQueue::FieldExitCode, ExitCode);
+    Root->SetNumberField(UAssetWorkbenchTaskQueue::FieldEditorPid, FPlatformProcess::GetCurrentProcessId());
 
     TArray<TSharedPtr<FJsonValue>> OutputsArray;
     for (const FString& OutPath : Outputs)

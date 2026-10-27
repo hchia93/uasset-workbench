@@ -47,7 +47,7 @@
 | DataAsset | ✓ | ✓ | | | |
 | Material / MaterialInstance | ✓ | | ✓ | | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
-| Niagara System | ✓ | | | | |
+| Niagara System | ✓ | | ✓ | | |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |

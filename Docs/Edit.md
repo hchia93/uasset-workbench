@@ -13,6 +13,7 @@
 | `EditDataTable` | DataTable 既有行的属性值 |
 | `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
 | `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
+| `EditNiagaraSystem` | Niagara system 的系统设置与 user 参数、emitter、renderer、module 栈、static switch、module input |
 
 失败行: `<RunName> failed for <AssetPath>. Reason: <该 target 写入期间记下的第一条 error>`，保存失败同一格式。失败不落盘。
 
@@ -1340,6 +1341,170 @@ PCG 节点不记尺寸，宽度按 `NodeWidth`，高度按 pin 数估算。
   ]
 }
 ```
+
+### 退出码
+
+同 `EditBlueprint`。
+
+## EditNiagaraSystem
+
+RunName `EditNiagaraSystem`。一个 target 只 load 一次资产，跑完 spec 点名的所有 writer。`-apply` 时强制整系统编译一次（`RequestCompile` force），再保存一次。
+
+### Writer
+
+固定顺序，不按 spec 键顺序。
+
+| 顺序 | Spec key | 做什么 |
+| --- | --- | --- |
+| 1 | `System` | 系统属性与 user 参数 |
+| 2 | `Emitters` | 加删 emitter，改 emitter 设置、启停、改名 |
+| 3 | `Renderers` | 加删 renderer，改 renderer 属性 |
+| 4 | `Modules` | 加删、启停、挪动 module |
+| 5 | `StaticSwitches` | module 与 dynamic input 的 static switch |
+| 6 | `Inputs` | module input 的取值方式 |
+
+任一 writer 失败或任一 script 编译报错，整个 target 不落盘。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    EditNiagaraSystem "" 10 600 "-spec=C:/path/spec.json -apply"
+```
+
+无 `-apply` 是 dry run，规则与 `EditBlueprint` 一致：改动靠进程退出丢弃，编辑器开着走 queue 通道时直接退 2。AssetList 传空字符串，target 写在 spec 里。
+
+### Spec
+
+顶层 `Targets[]`，每项 `AssetPath` 加任意 section。
+
+寻址一律抄 `NiagaraSystemExport` 的产物。
+
+| 字段 | 取值 |
+| --- | --- |
+| `Emitter` | emitter handle 的 `Name`。system stage 不给 |
+| `Stage` | `SystemSpawn` / `SystemUpdate` / `EmitterSpawn` / `EmitterUpdate` / `ParticleSpawn` / `ParticleUpdate` / `Event:<SourceEventName>` / `SimulationStage:<SimulationStageName>` |
+| `Module` | `Stages[].Modules[].Name` 的函数名，如 `RandomRangeFloat001`。dynamic input 按它自己的 `Name` 同样寻址。同一次运行里 `Modules` `Add` 或 `Inputs` `DynamicInput` 给的 `Id` 也能当 `Module` 用 |
+| `Input` | 导出 `Inputs` 下的键，不带 `Module.` 前缀 |
+
+### System
+
+对象。
+
+| 字段 | 说明 |
+| --- | --- |
+| `Properties` | `UNiagaraSystem` 字段，路径语法同 `ApplyProperties` |
+| `UserParameters` | `"User.X": "<值文本或资产路径>"`。data interface 类 user 参数拒写 |
+
+### Emitters
+
+数组，每项 `Op`，缺省 `Modify`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Asset` / `Name` | `Asset` 是 emitter 资产路径，`Name` 可选 |
+| `Delete` | `Emitter` | |
+| `Modify` | `Emitter` / `Enabled` / `Properties` / `NewName` | `Properties` 是 `FVersionedNiagaraEmitterData` 字段，键同导出 emitter 的 `Properties`。`NewName` 最后生效，同一 op 的其余字段仍按旧名寻址 |
+
+### Renderers
+
+数组，每项必给 `Emitter`，`Op` 缺省 `Modify`。`Index` 抄导出的 `Renderers[].Index`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Class` / `Properties` | `Class` 是具体 renderer 类，如 `/Script/Niagara.NiagaraSpriteRendererProperties`。`Properties` 可选 |
+| `Delete` | `Index` | |
+| `Modify` | `Index` / `Properties` | |
+
+### Modules
+
+数组，每项 `Op` 必给，加 `Emitter` / `Stage`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Script` / `Index` / `Id` | `Script` 是 module 资产路径。`Index` 是 stage 内的位置，不给即追加 |
+| `Delete` | `Module` | module 的 override 节点与 dynamic input 一并删除 |
+| `Enable` | `Module` / `Enabled` | |
+| `Move` | `Module` / `Index` | `Index` 不计被挪的 module 本身。只在同一 stage 内挪 |
+
+### StaticSwitches
+
+数组，每项 `Emitter` / `Stage` / `Module` / `Switches`。`Switches` 是 `{ "<switch 名>": "<值>" }`，键同导出的 `StaticSwitches`。
+
+枚举值收导出打印的显示名，也收内部名。
+
+被另一个 switch 隐藏的 switch 要等那个 switch 设完才可见。同一个 `Switches` 对象里的 JSON 键序不保证，有依赖的 switch 拆成先后两个 op。
+
+### Inputs
+
+数组，每项 `Emitter` / `Stage` / `Module` / `Input`，再加下表恰好一种取值字段。
+
+| 字段 | 说明 |
+| --- | --- |
+| `Value` | 文本。导出的 `Value` 原样喂回。标量、bool、枚举写 pin 文本，如 `"0.5"` / `"true"`。struct 写 struct 文本，如 `"(X=1.0,Y=2.0)"` / `"(R=..,G=..,B=..,A=..)"` |
+| `Link` | 参数名，如 `"Particles.NormalizedAge"` / `"Engine.Owner.SystemXAxis"` |
+| `DynamicInput` | dynamic input script 资产路径，`Id` 可选 |
+| `DataInterface` | `{ Class?, Properties? }`。给 `Class` 新建 DI，不给 `Class` 改 input 上已有的 DI。曲线 key 走 `Properties`，如 `"Curve": "(Keys=((Time=0.0,Value=1.0),(Time=1.0,Value=0.5)))"` |
+| `Object` | 资产路径 |
+| `Reset` | `true`，退回 module 默认值 |
+
+设任一种取值前，先移除原本驱动该 input 的东西。之前的 dynamic input 节点一并删除。
+
+### 已持有的值
+
+值已经相同的条目跳过不写，计入已持有。
+
+| 条目 | 判定相同 |
+| --- | --- |
+| `Properties`（System / Emitters / Renderers / DataInterface） | 属性文本等于当前导出文本 |
+| `UserParameters` | 参数值或资产相同 |
+| `Emitters` / `Modules` `Enable` 的 `Enabled` | 启停状态相同 |
+| `StaticSwitches` | switch 值相同 |
+| `Inputs` `Value` / `Link` / `Object` | 本地值、链接参数、资产相同 |
+| `Inputs` `Reset` | input 已是 `Default` |
+
+恒算改动: `Modules` `Add` / `Delete` / `Move`，`Inputs` `DynamicInput`，带 `Class` 的 `DataInterface`。非字符串的属性值照写。emitter `Properties` 只比顶层字段，点号嵌套路径照写。
+
+每个 target 打一行: `<AssetPath>: <N> change(s), <M> entries already held the value`
+0 change 的 target 不编译也不保存。
+
+所以导出旁的 `.spec.json` 原样喂回是 no-op，改一行就只改一处，见 [Export.md](Export.md) 的 `NiagaraSystemExport`。
+
+### 例子
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/FX/NS_Foo",
+      "System": { "UserParameters": { "User.Width": "30.5" } },
+      "Modules": [
+        { "Op": "Add", "Emitter": "Sparks", "Stage": "ParticleUpdate", "Script": "/Niagara/Modules/Update/Forces/Drag.Drag", "Index": 4, "Id": "drag" },
+        { "Op": "Delete", "Emitter": "Sparks", "Stage": "ParticleUpdate", "Module": "DynamicMaterialParameters" }
+      ],
+      "StaticSwitches": [
+        { "Emitter": "Sparks", "Stage": "EmitterUpdate", "Module": "EmitterState", "Switches": { "Life Cycle Mode": "Self" } },
+        { "Emitter": "Sparks", "Stage": "EmitterUpdate", "Module": "EmitterState", "Switches": { "Loop Behavior": "Once" } }
+      ],
+      "Inputs": [
+        { "Emitter": "Sparks", "Stage": "ParticleSpawn", "Module": "InitializeParticle", "Input": "Lifetime", "Value": "0.5" },
+        { "Emitter": "Sparks", "Stage": "ParticleUpdate", "Module": "drag", "Input": "Drag", "Value": "2.5" },
+        { "Emitter": "Sparks", "Stage": "ParticleUpdate", "Module": "CurlNoiseForce", "Input": "Noise Strength", "DynamicInput": "/Niagara/DynamicInputs/UniformRange/V2/RandomRangeFloat.RandomRangeFloat", "Id": "noiserange" },
+        { "Emitter": "Sparks", "Stage": "ParticleUpdate", "Module": "noiserange", "Input": "Maximum", "Value": "1500.0" }
+      ]
+    }
+  ]
+}
+```
+
+### 限制
+
+| 情况 | 行为 |
+| --- | --- |
+| `Modules` `Add` 新建的 module | 不跑栈的 input 初始化。module 默认值是 data interface 或 dynamic input 的 input 停在 module 默认值，要另外设 |
+| `Expression`（自定义 HLSL）input | 只能导出，不能写 |
+| module 改名 | 不支持 |
 
 ### 退出码
 

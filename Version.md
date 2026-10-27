@@ -4,6 +4,17 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.0
+
+- 新增 `EditNiagaraSystem`，按 spec 改 Niagara system，分 `System` / `Emitters` / `Renderers` / `Modules` / `StaticSwitches` / `Inputs` 六段，固定按这个顺序执行。默认 dry run，`-apply` 编译后落盘，编译出错不保存
+- `Modules` 增删、启停、在 stage 内移动模块。`Inputs` 设本地值、链接参数、dynamic input、data interface、对象引用，或清掉覆写回到默认值。`StaticSwitches` 按当前开关可见性逐个写，一个开关能藏起另一个
+- `Emitters` 增删、改名、启停，改 emitter 属性。`Renderers` 增删、改属性。`System` 改 system 属性与 user parameter
+- 已经是目标值的条目不算改动，日志记成 `entries already held the value`。整份 spec 都没改动的资产不编译不保存
+- `NiagaraSystemExport` 格式重写：按 stage 列出模块的顺序、启停、static switch 与每个 input 的模式和值，dynamic input 嵌套导出，带 system stage、全部 data interface 与 renderer。属性只写和默认值不同的部分，struct 值不丢精度
+- `NiagaraSystemExport` 在导出旁边写一份 `<导出>.spec.json`，能直接喂给 `EditNiagaraSystem`，原样喂回为零改动
+- 队列 done 文件带 `EditorPid`，`run_commandlet.sh` 输出 `ran in` 一行，写明是哪台编辑器跑的任务
+- 自动化测试进程不开任务队列，不写 `.alive`，测试结束后不会让 `run_commandlet.sh` 去等一个已经退出的编辑器
+
 ### 2.6.12
 
 - 新增 `RenameDefaultSubobject`，C++ 改 `CreateDefaultSubobject` 的名字之前，把派生 Blueprint 与 level 里摆放的 actor 上存着的子对象先改名，改完 C++ 不留孤儿组件。默认 dry run，`-apply` 落盘

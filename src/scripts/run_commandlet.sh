@@ -162,6 +162,8 @@ newest_export_since() {
     local prefix="$1" since="$2" f best=""
     for f in "$prefix"_r*.json; do
         [ -f "$f" ] || continue
+        # The edit spec beside an export shares its stamp, it is not the export itself.
+        case "$f" in *.spec.json) continue ;; esac
         if [ "$(get_mtime "$f")" -ge "$since" ]; then
             best="$f"
         fi
@@ -201,6 +203,9 @@ report_export_outputs() {
             rc=1
         else
             echo "[run_commandlet] output: $F" >&2
+            if [ -f "${F%.json}.spec.json" ]; then
+                echo "[run_commandlet] spec: ${F%.json}.spec.json" >&2
+            fi
         fi
     done
     return "$rc"
@@ -294,6 +299,13 @@ EOF
     exit_code=$(grep -o '"ExitCode"[[:space:]]*:[[:space:]]*-\{0,1\}[0-9]\+' "$done_path" | grep -o '\-\{0,1\}[0-9]\+$')
     error_text=$(grep -o '"Error"[[:space:]]*:[[:space:]]*"\([^"\\]\|\\.\)*"' "$done_path" | sed 's/^"Error"[[:space:]]*:[[:space:]]*"//; s/"$//')
     echo "[run_commandlet] task $uuid done exit=${exit_code:-1}" >&2
+    # Name the editor that took the task, other agents' editors of this project share the queue.
+    local editor_pid editor_line
+    editor_pid=$(grep -o '"EditorPid"[[:space:]]*:[[:space:]]*[0-9]\+' "$done_path" | grep -o '[0-9]\+$')
+    if [ -n "$editor_pid" ]; then
+        editor_line=$(python "$SCRIPT_DIR/editor_session.py" list 2>/dev/null | grep " pid=$editor_pid ")
+        echo "[run_commandlet] ran in ${editor_line:-unregistered editor pid=$editor_pid}" >&2
+    fi
     if [ -n "$error_text" ]; then
         echo "[run_commandlet] error: $error_text" >&2
     fi

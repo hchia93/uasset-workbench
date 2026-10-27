@@ -26,4 +26,7 @@ namespace UAssetWorkbenchTaskQueue
     inline constexpr const TCHAR* FieldExitCode = TEXT("ExitCode");
     inline constexpr const TCHAR* FieldOutputs  = TEXT("Outputs");
     inline constexpr const TCHAR* FieldError    = TEXT("Error");
+
+    // Several editors of one project share the queue. The wrapper maps this pid to the editor_session.py entry.
+    inline constexpr const TCHAR* FieldEditorPid = TEXT("EditorPid");
 }

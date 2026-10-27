@@ -17,7 +17,7 @@
 | 看 AnimBP 的状态机与转换条件 | `AnimBlueprintExport` | Export |
 | 看 BT 的树结构、节点参数、Blackboard key | `BehaviorTreeExport` | Export |
 | 看材质表达式或 MI 的参数覆写 | `MaterialExport` | Export |
-| 看 Niagara 的 emitter、script、renderer | `NiagaraSystemExport` | Export |
+| 看 Niagara 的栈: emitter、各 stage 的 module、static switch、input 取值方式、renderer | `NiagaraSystemExport` | Export |
 | 看贴图的压缩、sRGB、LOD group、源尺寸 | `TextureExport` | Export |
 | 看 PCG graph 的节点、连线、参数、子图 | `PCGGraphExport` | Export |
 | 想知道 PCG 有哪些节点可用，某节点有哪些 pin 与属性 | `PCGCatalogExport`，必给 `-filter=` | Export |
@@ -63,6 +63,11 @@
 | 改 DataTable 既有行的属性值 | `EditDataTable` | Edit |
 | 改关卡里某个 actor 的属性，包括它 instanced 子对象上 Python 写不进去的 `EditInstanceOnly` | `EditLevel` | Edit |
 | 给 PCG graph 加删节点、接断连线、改节点属性、改图参数、排版 | `EditPCGGraph` | Edit |
+| 改 Niagara module input 的值、link、dynamic input、曲线 | `EditNiagaraSystem` 的 `Inputs` | Edit |
+| 加删挪 Niagara module，或开关 module | `EditNiagaraSystem` 的 `Modules` | Edit |
+| 改 Niagara module 的 static switch | `EditNiagaraSystem` 的 `StaticSwitches` | Edit |
+| 改 Niagara renderer、emitter、系统属性与 user 参数 | `EditNiagaraSystem` 的 `Renderers` / `Emitters` / `System` | Edit |
+| 要改 Niagara 但不确定 spec 怎么写 | 先 `NiagaraSystemExport`，改它旁边的 `.spec.json` 再喂给 `EditNiagaraSystem` | Export + Edit |
 | C++ 改名后 BP 事件不再触发 | `RedirectBlueprintEvent` | Migrate |
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
 | 图逻辑搬进 C++ 后，BP 图里作废的那几个节点要删掉 | `DeleteBlueprintNode` | Migrate |
@@ -129,7 +134,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     '-spec="C:/temp/create.spec.json" -unattended'
 ```
 
-Edit。五个 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串，dry run 就是不给 `-apply`。
+Edit。八个 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串，dry run 就是不给 `-apply`。
 
 Migrate。除 `ReparentBlueprint`、`ResaveAsset`、`SanitizeLevelReference` 外默认 dry run，确认输出无误后补 `-apply`。
 
@@ -173,6 +178,8 @@ Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位�
 
 `--owner` 必填，用 agent 或 session 的稳定名字。谁起的编辑器谁关，记住自己的编号。
 
+自动化测试进程（命令行带 `-TestExit=` 或 `Automation RunTests`，例如 `Scripts/run-automation-tests.ps1` 起的 UnrealEditor-Cmd）不建 task queue 子系统，不写 `.alive`。测试刚结束就调 wrapper 会直接走独立 commandlet。
+
 `exec_in_editor.py` 只连本项目的编辑器，按 remote execution pong 的 `project_root` 过滤。本项目开着不止一个编辑器时直接失败并列出候选，用 `--editor <N>` 点名，按 pid 校验。
 
 ```bash
@@ -189,6 +196,8 @@ python Plugins/UAssetWorkbench/scripts/exec_in_editor.py [--editor <N>] --cmd "<
 页是历史，跑完不会消失，之后回头翻得到。摘要行在页尾，带 warning 与 error 计数。只要计数非零就弹 toast，干净的 run 不打扰。
 
 保存触发的资产校验在摘要之前对本 run 存过的包同步跑完，每条记成 `Save validation: <asset>: <message>`，计入本页的 warning 与 error 计数。
+
+queue 路径跑完后 wrapper 在 `task <uuid> done exit=N` 下面打印 `[run_commandlet] ran in EDITOR #N pid=... owner=...`，点名接手任务的编辑器。没在 `editor_session.py` 登记的编辑器打印 `ran in unregistered editor pid=<pid>`。
 
 编辑器关着时走 commandlet 路径，没有 UI，记录在 `Saved/Logs/` 下的日志文件里。
 
@@ -211,6 +220,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 Export。
 
 输出: `Intermediate/UAssetExport/<AssetPath>_r<revision>_<YYYYMMDD-HHMMSS>.json`，同一资产的多次导出互不覆盖，读最新那份
+Edit spec: `NiagaraSystemExport` 另打一行 `[run_commandlet] spec: <path>`，指向同戳的 `.spec.json`
 先 grep 定位关心的节点标题、函数名、控件名，再按行号区间读。
 
 ```bash
@@ -280,3 +290,6 @@ Audit。
 | 想拿 PCG 节点的 error / warning | 生成期产物，静态导出与审计都拿不到 |
 | `EditPCGGraph` 的 `Properties` 指到 `SettingsInstance` 节点 | 会被拒绝，那是共享的 settings 资产 |
 | `AuditPCG` 既不给 `-withlevels` 也不给 `-levels=` | 只扫 graph，关卡上的 PCGComponent 不查 |
+| `StaticSwitches` 一个 op 里放有依赖的两个 switch | JSON 键序不保证，被隐藏的 switch 报 `not visible`。拆成先后两个 op |
+| `Inputs` 报 `Input ... not visible` | 该 input 被 static switch 隐藏。先用 `StaticSwitches` 设 switch |
+| `Edit*` 走 queue 失败后直接重跑 | 内存里的资产已改了一半，没保存但保持 dirty，下一次 run 在这份脏数据上继续。先在编辑器里还原该资产（不保存关闭重开，或 revert），再重跑 |

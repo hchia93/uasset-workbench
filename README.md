@@ -47,7 +47,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | DataAsset | ✓ | ✓ | | | |
 | Material / MaterialInstance | ✓ | | ✓ | | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
-| Niagara System | ✓ | | | | |
+| Niagara System | ✓ | | ✓ | | |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |

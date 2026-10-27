@@ -11,7 +11,7 @@
 | `WidgetLayoutExport` | Widget 树、布局、动画、EdGraph |
 | `DataAssetExport` | DataAsset 子类属性 |
 | `DataTableExport` | DataTable 行结构与全部行数据 |
-| `NiagaraSystemExport` | Niagara emitter、script、renderer |
+| `NiagaraSystemExport` | Niagara system 的栈: 系统与 emitter 设置、user 参数、各 stage 的有序 module、static switch、input 取值方式、renderer |
 | `MaterialExport` | Material 表达式与连线，MI 的参数覆写 |
 | `TextureExport` | Texture 属性，压缩、sRGB、LOD group、mip、源尺寸 |
 | `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key |
@@ -618,3 +618,77 @@ pin 每项: `Label` / `AllowedTypes` / `Usage` / `PinStatus` / `AllowMultipleDat
 | `Preconfigured[]` / `OnlyPreconfigured` | 预配置项，每项 `Label` / `Index`，`EditPCGGraph` 的 `Preconfigured` 二选一填 |
 | `InputPins[]` / `OutputPins[]` | 默认 pin 表，形状同 `PCGGraphExport` 的 pin 去掉连接状态 |
 | `Properties[]` | 可写属性，每项 `Name` / `CppType` / `Category` / `Default`，另按情况发 `Overridable`（可被 pin 覆盖）/ `EditCondition` / `Tooltip` / `Options[]`（枚举可选值）/ `Instanced` 加 `Class`（instanced 子对象） |
+
+## NiagaraSystemExport
+
+`ExportType`: `NiagaraSystem`
+
+名字与值就是 `EditNiagaraSystem` 吃的寻址，导出的 `Value` 文本可以原样喂回 `Inputs` 的 `Value`，见 [Edit.md](Edit.md)。
+
+### 顶层字段
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `SystemName` / `AssetPath` / `ExportTimestamp` | 恒发 | 资产身份 |
+| `Properties` | 有非默认值 | system 相对 CDO 的 delta。编译产物、栈内容与 bookkeeping 字段跳过 |
+| `UserParameters` | 恒发 | `{ "<参数名>": { Type, Value 或 DataInterface 或 Object } }` |
+| `Stages[]` | 恒发 | system stage，`SystemSpawn` / `SystemUpdate` |
+| `Emitters[]` | 恒发 | 见下 |
+
+`Emitters[]` 每项。
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `Name` | 恒发 | emitter handle 名，`EditNiagaraSystem` 的 `Emitter` 抄它 |
+| `Enabled` / `UniqueInstanceName` | 恒发 | 启停与实例名 |
+| `Properties` | 有非默认值 | `FVersionedNiagaraEmitterData` 相对默认值的 delta |
+| `Stages[]` | 有 emitter 数据 | emitter 与 particle stage，另有 `Event:<SourceEventName>` / `SimulationStage:<SimulationStageName>` |
+| `Renderers[]` | 有 emitter 数据 | 每项 `Index` / `RendererClass` / `Properties`。`Properties` 是含基类字段的 delta。mesh renderer 另发 `MeshDetails`，每项 `Mesh` / `NativeBoundsExtent` / `NativeBoundsRadius` / `Scale` / `PivotOffset` |
+
+### Stage 与 Module
+
+Stage: `Name` 加 `Modules[]`，按栈顺序。
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `Name` | 恒发 | 函数名，如 `RandomRangeFloat001`，`EditNiagaraSystem` 的 `Module` 抄它 |
+| `Script` | 有 script | module 资产路径 |
+| `Enabled` | 恒发 | 启停 |
+| `StaticSwitches` | 有可见 switch | `{ "<switch 名>": "<显示值>" }` |
+| `Inputs` | 有可见 input | `{ "<input 名>": { Type, Mode, ... } }`，键不带 `Module.` 前缀 |
+
+只列当前 static switch 下可见的 input。
+
+### Input Mode
+
+| `Mode` | 附带键 | 含义 |
+| --- | --- | --- |
+| `Default` | 无 | 用 module 默认值 |
+| `Local` | `Value` | 本地值文本 |
+| `Linked` | `Link` | 链接的参数名 |
+| `DynamicInput` | `DynamicInput` | 嵌套的 module 对象，形状同 Module |
+| `DataInterface` | `DataInterface` | `Class` 加 `Properties` delta，曲线 LUT 不发 |
+| `ObjectAsset` | `Object` | 资产路径 |
+| `Expression` | `Expression` | 自定义 HLSL 文本 |
+
+`ExporterVersion` 早于 2.7.0 的产物是平铺的 `Graph` / `Modules` / `Curves`，各 script 的 `Inputs` 按 rapid iteration 名做键。拿旧产物推理前先重新导出。
+
+### Edit spec
+
+每次导出在旁边另写一份 `EditNiagaraSystem` spec，内容是当前可编辑状态。
+
+路径: `Intermediate/UAssetExport/<AssetPath>_r<revision>_<YYYYMMDD-HHMMSS>.spec.json`，戳与导出相同
+Wrapper: `output:` 行之后打印 `[run_commandlet] spec: <path>`，完成判定不会把 spec 当成导出
+
+| Section | 内容 |
+| --- | --- |
+| `System` | `Properties`，`UserParameters` 不含 data interface 类参数 |
+| `Emitters` | 每个 emitter 一个 `Modify`，带 `Enabled` / `Properties` |
+| `Renderers` | 每个 renderer 一个 `Modify`，带 `Index` / `Properties` |
+| `Modules` | 每个 module 一个 `Enable` op |
+| `StaticSwitches` | 每个有 switch 的 module 一项 |
+| `Inputs` | `Local` / `Linked` / `ObjectAsset` / `DataInterface` 的 input。`DataInterface` 只带 `Properties`，不带 `Class` |
+
+`DynamicInput` input 本身不重设，它的嵌套 input 照列，`Module` 写 dynamic input 自己的 `Name`。`Default` 与 `Expression` input 不列。
+
+用法: 复制一份，只改要改的行，整份喂给 `EditNiagaraSystem`。没改的条目在写入端算作已持有，见 [Edit.md](Edit.md)。

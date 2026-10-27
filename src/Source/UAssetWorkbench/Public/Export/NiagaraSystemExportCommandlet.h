@@ -5,15 +5,13 @@
 
 #include "NiagaraSystemExportCommandlet.generated.h"
 
+class UNiagaraRendererProperties;
 class UNiagaraSystem;
-class UNiagaraDataInterface;
-class UNiagaraMeshRendererProperties;
-class UNiagaraNodeFunctionCall;
+struct FNiagaraEmitterHandle;
 struct FNiagaraParameterStore;
-struct FNiagaraTypeDefinition;
-struct FVersionedNiagaraEmitterData;
 
-// Exports Niagara System structure to JSON: emitters, module input values, lifecycle, renderers, curves.
+// Exports a Niagara System as its stack: system and emitter settings, user parameters, every stage with its
+// ordered modules, static switches and per-input value mode, and renderers. Addresses match EditNiagaraSystem.
 //   UnrealEditor-Cmd.exe Project.uproject -run=NiagaraSystemExport -assets="/Game/Path/NS_A,/Game/Path/NS_B"
 // Contract: Docs/Export.md
 UCLASS()
@@ -30,21 +28,12 @@ public:
 private:
 
     TSharedPtr<FJsonObject> ExportNiagaraSystem(UNiagaraSystem* System) const;
-    TSharedPtr<FJsonObject> ExportEmitter(const struct FNiagaraEmitterHandle& EmitterHandle) const;
-    TSharedPtr<FJsonObject> ExportScript(class UNiagaraScript* Script, const FString& Usage) const;
-    TSharedPtr<FJsonObject> ExportRendererProperties(class UNiagaraRendererProperties* Renderer) const;
-    TSharedPtr<FJsonObject> ExportSubclassProperties(UObject* Object, UClass* StopAtClass) const;
+    TSharedPtr<FJsonObject> ExportEmitter(UNiagaraSystem* System, const FNiagaraEmitterHandle& EmitterHandle) const;
+    TSharedPtr<FJsonObject> ExportUserParameters(const FNiagaraParameterStore& Store) const;
+    TSharedPtr<FJsonObject> ExportRendererProperties(UNiagaraRendererProperties* Renderer, int32 Index) const;
+    TArray<TSharedPtr<FJsonValue>> ExportStages(UNiagaraSystem* System, const FNiagaraEmitterHandle* EmitterHandle) const;
 
-    // Module input values: decode the script's RapidIterationParameters (Lifetime, Scale, SpawnCount, loop settings)
-    TSharedPtr<FJsonObject> ExportParameterStoreValues(const FNiagaraParameterStore& Store) const;
-    FString DecodeNiagaraValue(const FNiagaraTypeDefinition& Type, const uint8* Data) const;
-
-    // Module stack + curve data interfaces from the emitter source graph
-    TSharedPtr<FJsonObject> ExportEmitterGraph(FVersionedNiagaraEmitterData* EmitterData) const;
-    TSharedPtr<FJsonObject> ExportCurveDataInterface(const FString& InputName, UNiagaraDataInterface* DataInterface) const;
-
-    // Static switch selections on a module call (e.g. ShapeLocation "Shape Primitive"); these are pin
-    // defaults on the call node, not RapidIterationParameters, so ExportParameterStoreValues misses them.
-    TSharedPtr<FJsonObject> ExportNodeStaticSwitches(UNiagaraNodeFunctionCall* Node) const;
-
+    // EditNiagaraSystem spec of the current editable state, built from the export so both stay in step.
+    // Applied unchanged it rewrites every value to itself, an agent edits the lines it wants to change.
+    TSharedRef<FJsonObject> BuildEditSpec(const TSharedRef<FJsonObject>& Export) const;
 };
