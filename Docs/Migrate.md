@@ -27,6 +27,7 @@ CoreRedirects 只覆盖调用侧: call 节点、变量引用、类引用。Bluep
 | `ResaveAsset` | 强制 load、compile、save，让 load 期的 fixup 落盘，例如已被 CoreRedirect 解析的引用。之后就能撤掉那条 redirect。支持 Blueprint 和 map | 直接保存 |
 | `ResaveRedirectedAsset` | 按项目 `[CoreRedirects]` 的旧名扫包头，找出还引用旧名的包并 resave，不必事先知道是哪些资产 | dry run |
 | `SanitizeLevelReference` | 把 level 里对旧资产的每一处引用换成新资产，然后 resave 这个 level | 直接保存，`-dryrun` 只统计 |
+| `RenameDefaultSubobject` | 改 C++ `CreateDefaultSubobject` 的名字之前，把派生 Blueprint 与 level 里摆放的 actor 上存着的那个子对象先改名，改完 C++ 不留孤儿组件 | dry run |
 
 执行后被改动的 uasset 会出现在版本控制的工作副本里。删掉的 redirector 文件只从磁盘删除，要在版本控制里补记删除。
 
@@ -256,6 +257,59 @@ redirect 来源: 项目 `Config/DefaultEngine.ini` 的 `[CoreRedirects]`，引�
 | 1 | `[CoreRedirects]` 里没有匹配的 Class / Struct / Enum / Package redirect，或至少一个包没存成 |
 | 2 | 编辑器在运行 |
 
+## RenameDefaultSubobject
+
+用途: C++ 改 `CreateDefaultSubobject` 的名字。先改资产再改代码，顺序反过来，引擎会按新名建一个组件，旧名那份留成孤儿，两个同时挂在 actor 上。
+
+### 流程
+
+| 步 | 动作 |
+| --- | --- |
+| 1 | 跑本 commandlet，`-apply` |
+| 2 | C++ 改子对象名，成员名一起改时加 `+PropertyRedirects`，重编 |
+| 3 | 对结尾列出的包跑 `ResaveAsset`。它会编译 Blueprint，名字表里的旧名靠这一步才清掉，引擎的 `ResavePackages` 清不干净 |
+| 4 | 撤掉第 2 步的 redirect |
+
+### 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `-classes=` | 逗号分隔，持有这个子对象的 C++ 类。收裸类名、带 C++ 前缀的类名与完整路径 |
+| `-oldname=` | 子对象现在的名字，C++ 还在用的那个 |
+| `-newname=` | 改成的名字 |
+| `-scandir=` | 扫描根，默认 `/Game`，Blueprint 与 level 都在这个范围里找 |
+| `-apply` | 落盘，不给即 dry run |
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    RenameDefaultSubobject "" 10 600 \
+    '-classes="AMyActor,AMyOtherActor" -oldname=InteractComponent -newname=ResponseRunner -apply'
+```
+
+### 规则
+
+| 情况 | 处理 |
+| --- | --- |
+| C++ 已经不建 `-oldname` 这个子对象 | 报错退出。说明 C++ 先改了，孤儿已经产生 |
+| Blueprint | 从 asset registry 的 native parent 找派生 Blueprint，在 CDO 上改名，不编译。编译会按 C++ 构造函数重建子对象，名字又变回旧的 |
+| level | 先读包头，名字表里有旧名的 `.umap` 与 external actor 包才加载。按包加载，不初始化 world，sublevel 不会丢 navmesh chunk |
+| level 里的实例 | 存盘时跟随 actor 类 CDO 上那份子对象的名字。actor 的 Blueprint 不在这次范围里，或者是直接摆放的原生 actor，报错 |
+| 任何一处报错 | 一个包都不存，全部成功或全部不写 |
+| 存完 | 重读每个包的名字表，新名不在就报错 |
+
+编辑器里有未保存改动的包拒绝处理，先保存或丢弃那些改动。
+
+### 退出码
+
+| 码 | 含义 |
+| --- | --- |
+| 0 | 完成，或 dry run |
+| 1 | 参数错，类解析不了，C++ 已不建旧名，任一实例的 Blueprint 不在范围里，或任一包没存成 |
+| 2 | 编辑器在运行 |
+
 ## 退出码
 
 | 码 | 含义 |
@@ -274,6 +328,7 @@ Migrate 组不会返回 3，3 是 Audit 组专用。退 1 的具体口径逐 com
 | `FixupRedirector` | 参数错，或至少一个 redirector 留下 |
 | `ResaveRedirectedAsset` | 没有匹配的 redirect，或至少一个包没存成 |
 | `SanitizeLevelReference` | 参数错，或至少一个 level 失败 |
+| `RenameDefaultSubobject` | 参数错、类解析不了、C++ 已不建旧名、实例的 Blueprint 不在范围里、任一包没存成 |
 
 没命中任何节点的 `DeleteBlueprintNode` 不算失败，退 0 并在结尾把没命中的 id 报出来。
 
@@ -289,6 +344,7 @@ Migrate 组不会返回 3，3 是 Audit 组专用。退 1 的具体口径逐 com
 | `DuplicateAsset` | 只扫描 | 补 `-apply` |
 | `FixupRedirector` | 只扫描 | 补 `-apply` |
 | `ResaveRedirectedAsset` | 只扫描 | 补 `-apply` |
+| `RenameDefaultSubobject` | 只扫描 | 补 `-apply` |
 | `SanitizeLevelReference` | 直接落盘 | 想先看结果就加 `-dryrun` |
 
 两个 redirect 的扫描输出里逐条列出命中的 Blueprint、事件或节点、以及会搬多少组连线，确认无误再补 `-apply` 编译并保存。

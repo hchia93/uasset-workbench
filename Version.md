@@ -4,6 +4,15 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.6.12
+
+- 新增 `RenameDefaultSubobject`，C++ 改 `CreateDefaultSubobject` 的名字之前，把派生 Blueprint 与 level 里摆放的 actor 上存着的子对象先改名，改完 C++ 不留孤儿组件。默认 dry run，`-apply` 落盘
+- `RenameDefaultSubobject` 的 level 按包加载，不初始化 world，sublevel 不丢 navmesh chunk。Blueprint 只改名不编译，编译会按 C++ 构造函数把名字改回去
+- `RenameDefaultSubobject` 发现 C++ 已经不建旧名、或 level 实例的 Blueprint 不在扫描范围里、或是直接摆放的原生 actor 时报错，一个包都不存。存完重读每个包的名字表核对新名
+- 删除 `scripts/rename_default_subobject.py`，由 `RenameDefaultSubobject` 取代
+- 读包头的代码从 `ResaveRedirectedAsset` 抽成共用，`ReparentBlueprint` 的类名解析挪进 `UAssetWorkbenchUtil`
+- `UASSET_WORKBENCH_VERSION_PATCH` 与版本字符串对齐，2.6.11 只改了字符串
+
 ### 2.6.11
 
 - `EditBlueprint` 新增 `Timelines`，改既有 timeline 的长度，整条替换 float 轨道的关键帧。读外部曲线资产的轨道拒写，增删轨道与 vector / color / event 轨道不在范围内

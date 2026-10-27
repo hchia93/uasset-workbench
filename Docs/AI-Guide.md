@@ -73,6 +73,7 @@
 | 想撤一条 CoreRedirect，先找出还引用旧名的包并 resave | `ResaveRedirectedAsset` | Migrate |
 | 已知是哪几个资产，让 CoreRedirect 解析过的引用落盘 | `ResaveAsset` | Migrate |
 | 资产改名后，把别的 level 的 import 改指到新资产 | `SanitizeLevelReference` | Migrate |
+| 想改 `CreateDefaultSubobject` 的名字，不想让派生 BP 和关卡里摆放的 actor 留下孤儿组件 | 先 `RenameDefaultSubobject`，再改 C++，最后对它列出的包跑 `ResaveAsset` | Migrate |
 | 想知道有没有 level 引用了已经不存在的资产 | `AuditLevelReference` | Audit |
 | 提交前 gate 一次破损引用检查 | `AuditLevelReference` | Audit |
 | 想知道哪个 level 是 persistent，哪些是 sublevel | `AuditLevelTopology` | Audit |
@@ -81,7 +82,6 @@
 | 想知道 PCG graph 有没有没接的必需 pin、孤立节点、空子图、没人读的参数，或关卡上的 PCGComponent 配置有没有问题 | `AuditPCG` | Audit |
 | 想测每个 sublevel 的加载卸载耗时 | `run_stream_metric.ps1` | 脚本 |
 | 想看每个 level 的组件数是否超预算 | 先 `LevelExport`，再 `level_budget_audit.py` | Export + 脚本 |
-| 想改 `CreateDefaultSubobject` 的名字，不想让派生 BP 留下孤儿组件 | 先 `rename_default_subobject.py`，再改 C++ | 脚本 |
 
 拿不准 Blueprint 里的问题出在 C++ 还是图上时，先 `BlueprintEdGraphExport` 看图，再决定。
 

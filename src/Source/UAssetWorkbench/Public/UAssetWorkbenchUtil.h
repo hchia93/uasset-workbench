@@ -78,6 +78,10 @@ namespace UAssetWorkbench
     // Parse "-assets=A,B,C" out of a commandlet param string. Trims quotes and whitespace.
     TArray<FString> ParseAssetPaths(const FString& Params);
 
+    // Accepts the bare name, the name with the class's own C++ prefix, or the full path.
+    bool NamesClass(const UClass* Class, const FString& Name);
+    UClass* ResolveClass(const FString& Name);
+
     // Compile Blueprints, mark dirty, write the package to disk. Extension follows level vs asset.
     // A Blueprint that comes out of the compile in error is not saved, the call returns false instead.
     bool CompileAndSavePackage(UObject* Asset, bool bCompileBlueprint = true);

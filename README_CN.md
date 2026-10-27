@@ -17,7 +17,7 @@
 | 读不了 | `.uasset` 是二进制，图、时间轴、控件层级、参数只在编辑器界面里看得到 | Export |
 | 改不了 | UMG 布局只能在编辑器里手工拖，没有可版本控制、可重放的写入路径 | Import |
 | 改不动既有的 | 加组件、接线、设默认值要分三次手工改，一批蓝图就重复一批次 | Edit |
-| 改名后修不了 | CoreRedirects 修不到 Blueprint 图里的实现侧与消费侧，也修不到 level 的旧路径 | Migrate |
+| 改名后修不了 | CoreRedirects 修不到 Blueprint 图里的实现侧与消费侧，也修不到 level 的旧路径。C++ 子对象改名会留下孤儿组件 | Migrate |
 | 审计不了 | 破损引用、贴图压缩、材质 usage flag、level 组件预算，没有批量查询的入口 | Audit |
 
 </div>
@@ -55,7 +55,7 @@
 
 </div>
 
-任意资产: `CreateAsset` 按 spec 新建，`RenameAsset` / `DuplicateAsset` / `ResaveAsset` 改名、复制、重存，`FixupRedirector` 修复 redirector，`ResaveRedirectedAsset` 重存仍引用 CoreRedirect 旧名的包
+任意资产: `CreateAsset` 按 spec 新建，`RenameAsset` / `DuplicateAsset` 改名、复制，`FixupRedirector` 修复 redirector，`ResaveRedirectedAsset` 重存仍引用 CoreRedirect 旧名的包。`ResaveAsset` 只重存 Blueprint 与 level
 
 每格对应的 RunName: [Docs/AI-Guide.md](Docs/AI-Guide.md) 的决策表
 

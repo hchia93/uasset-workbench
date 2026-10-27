@@ -17,7 +17,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | Can't read | `.uasset` is binary, graphs, timelines, widget trees and parameters only show in the editor | Export |
 | Can't write | UMG layout is hand-dragged in the editor, no versionable or replayable write path | Import |
 | Can't edit in place | Add a component, wire a pin, set a default: three manual edits, repeated per Blueprint | Edit |
-| Renames break refs | CoreRedirects miss Blueprint implementers and consumers, and old paths in levels | Migrate |
+| Renames break refs | CoreRedirects miss Blueprint implementers and consumers and old paths in levels. A renamed C++ subobject leaves an orphan component | Migrate |
 | Can't audit | Broken refs, texture compression, material usage flags, level budgets, no batch query | Audit |
 
 </div>
@@ -55,7 +55,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 
 </div>
 
-Any asset: `CreateAsset` creates from a spec, `RenameAsset` / `DuplicateAsset` / `ResaveAsset` rename, duplicate, resave, `FixupRedirector` fixes up redirectors, `ResaveRedirectedAsset` resaves what still imports a CoreRedirect old name
+Any asset: `CreateAsset` creates from a spec, `RenameAsset` / `DuplicateAsset` rename and duplicate, `FixupRedirector` fixes up redirectors, `ResaveRedirectedAsset` resaves what still imports a CoreRedirect old name. `ResaveAsset` resaves Blueprints and levels only
 
 RunName per cell: decision table in [Docs/AI-Guide.md](Docs/AI-Guide.md)
 

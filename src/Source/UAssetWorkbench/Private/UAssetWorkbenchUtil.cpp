@@ -339,6 +339,37 @@ TArray<FString> UAssetWorkbench::ParseAssetPaths(const FString& Params)
     return ParsePathList(Params, TEXT("-assets="));
 }
 
+bool UAssetWorkbench::NamesClass(const UClass* Class, const FString& Name)
+{
+    if (Name == Class->GetName() || Name == Class->GetPathName())
+    {
+        return true;
+    }
+
+    return Name == FString(Class->GetPrefixCPP()) + Class->GetName();
+}
+
+UClass* UAssetWorkbench::ResolveClass(const FString& Name)
+{
+    if (Name.Contains(TEXT("/")))
+    {
+        return LoadObject<UClass>(nullptr, *Name);
+    }
+
+    if (UClass* Found = FindFirstObject<UClass>(*Name, EFindFirstObjectOptions::ExactClass))
+    {
+        return Found;
+    }
+
+    if (Name.Len() < 2)
+    {
+        return nullptr;
+    }
+
+    UClass* Unprefixed = FindFirstObject<UClass>(*Name.Mid(1), EFindFirstObjectOptions::ExactClass);
+    return Unprefixed && NamesClass(Unprefixed, Name) ? Unprefixed : nullptr;
+}
+
 int32 UAssetWorkbench::ApplyProperties(UObject* Target, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures)
 {
     return ApplyStructProperties(Target->GetClass(), Target, Target, Properties, OutFailures);

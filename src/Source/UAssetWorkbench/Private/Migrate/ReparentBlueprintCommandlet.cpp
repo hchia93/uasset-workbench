@@ -13,41 +13,6 @@
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 
-namespace
-{
-    // Accepts the bare name, the name with the class's own C++ prefix, or the full path.
-    bool NamesClass(const UClass* Class, const FString& Name)
-    {
-        if (Name == Class->GetName() || Name == Class->GetPathName())
-        {
-            return true;
-        }
-
-        return Name == FString(Class->GetPrefixCPP()) + Class->GetName();
-    }
-
-    UClass* ResolveClass(const FString& Name)
-    {
-        if (Name.Contains(TEXT("/")))
-        {
-            return LoadObject<UClass>(nullptr, *Name);
-        }
-
-        if (UClass* Found = FindFirstObject<UClass>(*Name, EFindFirstObjectOptions::ExactClass))
-        {
-            return Found;
-        }
-
-        if (Name.Len() < 2)
-        {
-            return nullptr;
-        }
-
-        UClass* Unprefixed = FindFirstObject<UClass>(*Name.Mid(1), EFindFirstObjectOptions::ExactClass);
-        return Unprefixed && NamesClass(Unprefixed, Name) ? Unprefixed : nullptr;
-    }
-}
-
 UReparentBlueprintCommandlet::UReparentBlueprintCommandlet()
 {
     IsClient = false;
@@ -132,13 +97,13 @@ bool UReparentBlueprintCommandlet::ReparentBlueprint(
         return false;
     }
 
-    if (!NamesClass(CurrentParent, OldClassName))
+    if (!UAssetWorkbench::NamesClass(CurrentParent, OldClassName))
     {
         UE_LOG(LogUAssetWorkbenchMigrator, Warning, TEXT("Blueprint parent mismatch (expected %s, got %s): %s"), *OldClassName, *CurrentParent->GetName(), *BlueprintPath);
         return false;
     }
 
-    UClass* NewParentClass = ResolveClass(NewClassName);
+    UClass* NewParentClass = UAssetWorkbench::ResolveClass(NewClassName);
     if (!NewParentClass)
     {
         UE_LOG(LogUAssetWorkbenchMigrator, Warning, TEXT("New class not found: %s"), *NewClassName);
