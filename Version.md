@@ -4,6 +4,11 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.1
+
+- `editor_session.py launch` 默认带 `-RenderOffScreen -unattended -nosplash`，编辑器不建窗口，不抢前台焦点。要窗口时加 `--visible`
+- AI-Guide 的编辑器会话表同步上述行为
+
 ### 2.7.0
 
 - 新增 `EditNiagaraSystem`，按 spec 改 Niagara system，分 `System` / `Emitters` / `Renderers` / `Modules` / `StaticSwitches` / `Inputs` 六段，固定按这个顺序执行。默认 dry run，`-apply` 编译后落盘，编译出错不保存

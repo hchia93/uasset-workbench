@@ -170,7 +170,7 @@ Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位�
 
 | 命令 | 作用 |
 | --- | --- |
-| `launch --owner <name> [--uproject <path>] [-- <editor args>]` | 起编辑器，分配最小空闲编号，打印 `EDITOR #N pid=... owner=... project=...`。同项目没有别的活编辑器时才清 task queue 的 `.alive` heartbeat |
+| `launch --owner <name> [--uproject <path>] [--visible] [-- <editor args>]` | 起编辑器，分配最小空闲编号，打印 `EDITOR #N pid=... owner=... project=...`。默认带 `-RenderOffScreen -unattended -nosplash`，不建窗口、不抢焦点，`--visible` 才开窗口。同项目没有别的活编辑器时才清 task queue 的 `.alive` heartbeat |
 | `close --owner <name> <N>` | 用 `taskkill /F /T /PID` 关掉 #N，删掉它留下的 `.alive`。#N 属于别的 owner 时拒绝，退出码 3 |
 | `release --owner <name> [--uproject <path>]` | 关掉本 owner 在该项目上的全部编辑器，删掉它们留下的 `.alive`。别的 owner 的编辑器还占着项目时退出码 3，此时 build 会撞上被锁的二进制 |
 | `list` | 列出活编辑器的编号、pid、owner、项目 |

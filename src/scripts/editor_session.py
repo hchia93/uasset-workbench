@@ -1,7 +1,7 @@
 # Launches and closes editors through a machine-wide registry so several agents can share one machine.
 # Every editor gets an index. Whoever launched an editor is the only one allowed to close it.
 # Usage:
-#   python editor_session.py launch --owner <name> [--uproject <path>] [-- <extra editor args>]
+#   python editor_session.py launch --owner <name> [--uproject <path>] [--visible] [-- <extra editor args>]
 #   python editor_session.py close --owner <name> <index>
 #   python editor_session.py release --owner <name> [--uproject <path>]
 #   python editor_session.py list
@@ -18,6 +18,10 @@ REGISTRY_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "UAssetW
 REGISTRY_PATH = REGISTRY_DIR / "editor_sessions.json"
 LOCK_PATH = REGISTRY_DIR / "editor_sessions.lock"
 LOCK_TIMEOUT_SEC = 10.0
+
+# No window is created at all, so the editor never takes focus from whatever the user is in. -unattended keeps a
+# modal dialog from hanging unseen.
+OFFSCREEN_ARGS = ["-RenderOffScreen", "-unattended", "-nosplash"]
 
 EXIT_OK = 0
 EXIT_NONE = 1
@@ -85,8 +89,9 @@ def describe(session):
     return "EDITOR #{} pid={} owner={} project={}".format(session["index"], session["pid"], session["owner"], session["uproject"])
 
 
-def cmd_launch(owner, uproject, extra_args):
+def cmd_launch(owner, uproject, visible, extra_args):
     uproject = Path(uproject).resolve()
+    window_args = [] if visible else OFFSCREEN_ARGS
     project_dir = uproject.parent
     with RegistryLock():
         sessions = load_live_sessions()
@@ -100,7 +105,7 @@ def cmd_launch(owner, uproject, extra_args):
             (project_dir / "Saved" / "UAssetWorkbenchTaskQueue" / ".alive").unlink(missing_ok=True)
 
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        proc = subprocess.Popen([str(engine_editor_exe(uproject)), str(uproject)] + extra_args, creationflags=flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen([str(engine_editor_exe(uproject)), str(uproject)] + window_args + extra_args, creationflags=flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         session = {"index": index, "pid": proc.pid, "owner": owner, "uproject": str(uproject), "started": time.strftime("%Y-%m-%d %H:%M:%S")}
         sessions.append(session)
         save_sessions(sessions)
@@ -213,6 +218,9 @@ def main(argv):
 
     owner = take("--owner")
     uproject = take("--uproject") or default_uproject()
+    visible = "--visible" in rest
+    if visible:
+        rest.remove("--visible")
 
     if command == "list":
         return cmd_list()
@@ -222,7 +230,7 @@ def main(argv):
         print("usage: --owner <name> is required, it is who may close the editor later")
         return EXIT_USAGE
     if command == "launch":
-        return cmd_launch(owner, uproject, extra_args)
+        return cmd_launch(owner, uproject, visible, extra_args)
     if command == "close" and len(rest) == 1 and rest[0].isdigit():
         return cmd_close(owner, int(rest[0]))
     if command == "release":
