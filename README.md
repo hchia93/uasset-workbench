@@ -44,9 +44,10 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | Anim Blueprint | ✓ | | ✓ | ✓ | |
 | AnimSequence / AnimMontage | ✓ | | ✓ | | |
 | DataTable | ✓ | | ✓ | | |
-| DataAsset | ✓ | ✓ | | | |
+| DataAsset | ✓ | ✓ | ✓ | | |
 | Material / MaterialInstance | ✓ | | ✓ | | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
+| StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
 | Niagara System | ✓ | | ✓ | | |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |

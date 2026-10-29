@@ -44,9 +44,10 @@
 | Anim Blueprint | ✓ | | ✓ | ✓ | |
 | AnimSequence / AnimMontage | ✓ | | ✓ | | |
 | DataTable | ✓ | | ✓ | | |
-| DataAsset | ✓ | ✓ | | | |
+| DataAsset | ✓ | ✓ | ✓ | | |
 | Material / MaterialInstance | ✓ | | ✓ | | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
+| StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
 | Niagara System | ✓ | | ✓ | | |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |

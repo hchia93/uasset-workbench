@@ -30,6 +30,8 @@ public class UAssetWorkbench : ModuleRules
                 "Slate",
                 "SlateCore",
                 "MaterialEditor",
+                "MeshDescription",
+                "PhysicsCore",
                 "RenderCore",
                 "RHI",
                 "Niagara",

@@ -14,6 +14,7 @@
 | `NiagaraSystemExport` | Niagara system 的栈: 系统与 emitter 设置、user 参数、各 stage 的有序 module、static switch、input 取值方式、renderer |
 | `MaterialExport` | Material 表达式与连线，MI 的参数覆写 |
 | `TextureExport` | Texture 属性，压缩、sRGB、LOD group、mip、源尺寸 |
+| `MeshExport` | StaticMesh / SkeletalMesh 的每级 LOD 面数、Nanite 设置、碰撞、材质槽、socket，SkeletalMesh 另带骨骼数与 physics asset |
 | `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key |
 | `AnimBlueprintExport` | AnimBP EdGraph、状态机的状态、转换、blend 设置、入口状态与 event 绑定 |
 | `LevelExport` | Level 的 actor / component、与 archetype 的差异属性、碰撞与静态网格与 ISM 摘要、streaming level |
@@ -692,3 +693,34 @@ Wrapper: `output:` 行之后打印 `[run_commandlet] spec: <path>`，完成判�
 `DynamicInput` input 本身不重设，它的嵌套 input 照列，`Module` 写 dynamic input 自己的 `Name`。`Default` 与 `Expression` input 不列。
 
 用法: 复制一份，只改要改的行，整份喂给 `EditNiagaraSystem`。没改的条目在写入端算作已持有，见 [Edit.md](Edit.md)。
+
+## MeshExport
+
+`ExportType`: `StaticMesh` / `SkeletalMesh`
+
+字段名与取值就是 `EditMeshAsset` 吃的寻址，见 [Edit.md](Edit.md)。
+
+### 顶层字段
+
+| 字段 | 适用 | 含义 |
+| --- | --- | --- |
+| `MeshName` / `AssetPath` / `Class` / `ExportTimestamp` | 两者 | 资产身份 |
+| `LODGroup` / `MinLOD` / `AutoComputeLODScreenSize` | StaticMesh | LOD 级设定 |
+| `Skeleton` / `Bones` | SkeletalMesh | skeleton 路径与参考骨骼数 |
+| `LODs[]` | 两者 | 见下 |
+| `Nanite` | 两者 | `NaniteSettings` 各字段的文本值。StaticMesh 开着 Nanite 时另发 `NaniteTriangles` |
+| `Collision` | 两者 | StaticMesh: `CollisionTraceFlag` / `CollisionProfile` / `Simple` 各类简单碰撞的个数 / `CustomizedCollision` / `ComplexCollisionMesh`。SkeletalMesh: `PhysicsAsset` / `Bodies` |
+| `MaterialSlots[]` | 两者 | `Index` / `SlotName` / `Material` |
+| `Sockets[]` | 两者 | `Name` / `Location` / `Rotation` / `Scale`，SkeletalMesh 另有 `Bone`，mesh 自己的 socket 在前，skeleton 的在后 |
+
+`LODs[]` 每项。
+
+| 字段 | 适用 | 含义 |
+| --- | --- | --- |
+| `Index` | 两者 | LOD 序号 |
+| `Triangles` / `Vertices` | 两者 | StaticMesh 读 render data，开着 Nanite 时是 fallback mesh 的数。SkeletalMesh 读 imported model |
+| `SourceTriangles` | StaticMesh 导入的 LOD | 源数据面数 |
+| `Generated` | 两者 | 由 reduction 生成，不是导入的 |
+| `ScreenSize` | 两者 | 手填值。`AutoComputeLODScreenSize` 开着时不生效，commandlet 里算不出生效值 |
+| `ReductionSettings` | 两者 | reduction 设定各字段的文本值 |
+

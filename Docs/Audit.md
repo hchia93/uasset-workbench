@@ -1,6 +1,6 @@
 # Audit
 
-只读检查资产，产出报告 JSON，不改任何包。本文覆盖四个 commandlet 与三个配套脚本。
+只读检查资产，产出报告 JSON，不改任何包。本文覆盖下表的 commandlet 与三个配套脚本。
 
 ## Commandlet
 
@@ -11,6 +11,7 @@
 | `AuditTexture` | 贴图设置与用途是否对得上，规则 T1-T15 |
 | `AuditMaterial` | 材质的 Nanite 兼容与 usage flag 是否对得上实际挂载，规则 N1-N9 与 U1-U4 |
 | `AuditPCG` | PCG graph 的静态规则 P1-P7，加关卡上 PCGComponent 的 P8 |
+| `AuditMesh` | StaticMesh / SkeletalMesh 的 LOD、Nanite、碰撞与材质槽，规则 M1-M5 |
 
 ## AuditLevelReference
 
@@ -88,7 +89,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 审计只找问题，不修。修在 Migrate 组的 `SanitizeLevelReference`，它把 level 里对旧资产的引用重指到新资产，见 [Migrate.md](Migrate.md)。
 
-`AuditTexture` 的配对操作是 Edit 组的 `EditTextureAsset`，`AuditMaterial` 的是 `EditMaterialAsset`。
+`AuditTexture` 的配对操作是 Edit 组的 `EditTextureAsset`，`AuditMaterial` 的是 `EditMaterialAsset`，`AuditMesh` 的是 `EditMeshAsset`。
 
 ## AuditLevelTopology
 
@@ -499,6 +500,60 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | `Findings[]` | 每项 `Asset` / `Rule` / `Severity` / `Node` / `Current` / `Expected` / `Context`。graph 规则的 `Asset` 是 graph 路径，P8 的是 `<关卡包>:<actor>.<组件>` |
 
 不带 `Spec` 块。修法要看图，按 `Findings` 手写 `EditPCGGraph` 的 spec。
+
+## AuditMesh
+
+用途: 审计 StaticMesh 与 SkeletalMesh 的 LOD、Nanite、碰撞与材质槽。
+
+机制: 只读，不保存任何包。每个候选 mesh 都 load，等 render data 与 imported model 建完再判。扫大目录慢，范围尽量收窄。
+
+### 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `-assets=` | 逗号分隔的入口资产，由 wrapper 的位置参数 `AssetList` 生成。可以直接给 mesh，也可以给 level / BP，走依赖链把 mesh 收出来。给了它就不看 `-scandir` |
+| `-scandir=` | 要枚举 mesh 的内容根目录，两个都不给时默认 `/Game` |
+| `-report=` | 报告 JSON 输出路径，默认 `Intermediate/AuditMesh/report.json` |
+| `-rules=` | 只跑列出的规则，例如 `-rules=M2,M4`。写了表里没有的规则名退 1 |
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    AuditMesh "" 10 900 \
+    '-scandir="/Game/Environment/Props"'
+```
+
+### 退出码
+
+同 `AuditTexture`: 0 无 Error 或 Warning，3 有，1 参数错或报告写失败，2 编辑器在运行。
+
+### 规则
+
+| 规则 | 级别 | 判定 | 建议值 |
+| --- | --- | --- | --- |
+| M1 | Warning | 没开 Nanite，只有一级 LOD，LOD0 >= 2000 面。M3 会命中的 mesh 不报 | StaticMesh: `NumLODs=4`。SkeletalMesh: 无 |
+| M2 | Error | 开着 Nanite，但有材质槽的 BlendMode 不是 Opaque 或 Masked | `NaniteSettings.bEnabled=False` |
+| M3 | Warning | StaticMesh 没开 Nanite，LOD0 >= 50000 面，且每个槽都有 Opaque 或 Masked 材质 | `NaniteSettings.bEnabled=True` |
+| M4 | Warning | StaticMesh 用 `CTF_UseComplexAsSimple`，LOD0 >= 1000 面 | `CollisionTraceFlag=CTF_UseDefault`，没有简单碰撞时另加 `SimpleCollision=Box` |
+| M5 | Error | 材质槽为空 | 无，挂哪个材质是美术决定 |
+
+M2 从 mesh 这一侧报，材质这一侧的 Nanite 兼容见 `AuditMaterial` 的 N1。开着 Nanite 的 mesh，面数读的是 fallback mesh。
+
+阈值硬编码在 C++ 里，不出 UPROPERTY。
+
+### 报告 JSON
+
+顶层与 `Findings` 的字段同 `AuditTexture`，`RunName` 固定 `AuditMesh`，`Scanned` 是扫过的 mesh 数。
+
+`Spec` 块就是 `EditMeshAsset` 的 spec，只收建议值确定的条目。同一资产的多条 finding 合成一个 target，同一字段先写的那条生效。
+
+```json
+{"Targets":[{"AssetPath":"/Game/Props/SM_Rock.SM_Rock","Collision":{"CollisionTraceFlag":"CTF_UseDefault","SimpleCollision":"Box"}}]}
+```
+
+整块存成文件喂给 `EditMeshAsset`，修完再审应为零，见 [Edit.md](Edit.md)。
 
 ## Stream metric 工作流
 

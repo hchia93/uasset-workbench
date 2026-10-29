@@ -4,6 +4,34 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.6（pending）
+
+- 新增 `SoundExport`，导出 SoundCue / MetaSound 的 sound class、attenuation、concurrency 与 SoundCue 节点图
+- 新增 `AuditSound`，查没设 concurrency、3D 用途缺 attenuation、sound class 为空
+- README 支持表补上 Sound 一行
+
+### 2.7.5（pending）
+
+- 新增 `EditBehaviorTree`，增删 composite / task / decorator / service，改节点属性与 blackboard key
+- `BehaviorTreeExport` 在导出旁边写一份 `<导出>.spec.json`，原样喂回为零改动
+
+### 2.7.4（pending）
+
+- 新增 `RenameMaterialParameter` 与 `RenameNiagaraUserParameter`，改名后改写 BP 里按字面名字设参数的调用，前者另改 MI 的覆写
+- 默认只列引用方，`-apply` 才改写。名字来自变量的调用只报不改
+
+### 2.7.3（pending）
+
+- 新增 `AuditNiagara`，读 `NiagaraSystemExport` 的结构，查 GPU emitter 没设固定 bounds、没配 scalability、warmup 过长、emitter 数过多、SimTarget 与 renderer 不匹配
+- `AuditNiagara` 的 `Spec` 块直接喂给 `EditNiagaraSystem`，修完再审为零
+
+### 2.7.2
+
+- 新增 `MeshExport`，StaticMesh / SkeletalMesh 导出每级 LOD 的面数与 reduction 设定、Nanite 设置、碰撞、材质槽、socket，SkeletalMesh 另带骨骼数与 physics asset
+- 新增 `AuditMesh`，规则 M1-M5 查缺 LOD、Nanite 与材质或面数不符、复杂碰撞当简单碰撞用、材质槽为空。建议值确定的规则进 `Spec` 块
+- 新增 `EditMeshAsset`，StaticMesh 改 LOD 数与每级 reduction、Nanite 开关、碰撞、材质槽指派，SkeletalMesh 改 Nanite 与材质槽，收 `AuditMesh` 的 `Spec`。默认 dry run，`-apply` 落盘
+- README 支持表补上 Mesh 一行，DataAsset 的 Edit 列标 ✓，对应 `DataAssetImport` 的部分写入
+
 ### 2.7.1
 
 - `editor_session.py launch` 默认带 `-RenderOffScreen -unattended -nosplash`，编辑器不建窗口，不抢前台焦点。要窗口时加 `--visible`

@@ -9,6 +9,7 @@
 | `EditBlueprint` | Blueprint 的组件、控件、变量、默认值、函数、分发器、接口、状态机、图、排版 |
 | `EditAnimAsset` | AnimSequence / AnimMontage 的 notify 与曲线，Sequence 另有 sync marker，Montage 另有 section 与 slot |
 | `EditTextureAsset` | Texture2D 的构建设置 |
+| `EditMeshAsset` | StaticMesh 的 LOD 数与每级 reduction、Nanite、碰撞、材质槽指派，SkeletalMesh 的 Nanite 与材质槽 |
 | `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 |
 | `EditDataTable` | DataTable 既有行的属性值 |
 | `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
@@ -1008,6 +1009,76 @@ dry run 做完前四步，只跳过第 5 步。
 | --- | --- |
 | 0 | 成功 |
 | 1 | 参数错误、spec 读不了、资产 load 不到、属性名不认识、枚举名写错 |
+| 2 | 编辑器在运行 |
+
+## EditMeshAsset
+
+用途: 按 spec 改 mesh 的设置。spec 形状与 `AuditMesh` 报告的 `Spec` 块一致，审计结果可以直接喂回。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    EditMeshAsset "" 10 900 "-spec=C:/path/spec.json -apply"
+```
+
+无 `-apply` 是 dry run，照写照 build，只跳过保存。AssetList 传空字符串，target 写在 spec 里。
+
+### Spec
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/Props/SM_Rock.SM_Rock",
+      "Properties": {
+        "LODGroup": "LargeProp",
+        "NaniteSettings.bEnabled": "False",
+        "StaticMaterials[0].MaterialInterface": "/Game/Materials/MI_Rock.MI_Rock"
+      },
+      "NumLODs": 4,
+      "LODs": [
+        { "Index": 1, "Properties": { "ReductionSettings.PercentTriangles": 0.3 } }
+      ],
+      "Collision": { "CollisionTraceFlag": "CTF_UseDefault", "SimpleCollision": "Box" }
+    }
+  ]
+}
+```
+
+四段都可选，至少给一段。`Properties` 与 `LODs` 的路径语法同 `EditBlueprint` 的属性写入，值收 `MeshExport` 导出的文本。
+
+| 段 | 适用 | 内容 |
+| --- | --- | --- |
+| `Properties` | 两者 | StaticMesh 的根: `NaniteSettings` / `StaticMaterials` / `LODGroup` / `MinLOD` / `bAutoComputeLODScreenSize`。SkeletalMesh 的根: `NaniteSettings` / `Materials` |
+| `NumLODs` | StaticMesh | 1 到 8。新增的 LOD 由引擎按 0.5 的幂设 reduction，没开自动 screen size 时取上一级的一半 |
+| `LODs[]` | StaticMesh | `Index` 加 `Properties`，根: `ReductionSettings` / `ScreenSize` / `BuildSettings`。`Index` 按 `NumLODs` 生效后的级数校验 |
+| `Collision` | StaticMesh | `CollisionTraceFlag` 写枚举名。`SimpleCollision`: `Box` 换成一个按包围盒生成的 box，`None` 清空简单碰撞 |
+
+表外的根、表外的 `Collision` 字段、SkeletalMesh 上的 StaticMesh 段，一律退 1。
+
+### 写入顺序
+
+1. `PreEditChange(nullptr)`
+2. `LODGroup`，走 `SetLODGroup`，group 自带的 LOD 默认值先落
+3. `NumLODs`
+4. 其余 `Properties`
+5. `LODs`
+6. `Collision`，写完重建物理数据并标 `CustomizedCollision`，reimport 不会冲掉
+7. `PostEditChange()`，随后 `FinishAllCompilation()`
+8. `-apply` 时保存包
+
+### 日志
+
+每个属性打一行 `资产 属性: 改前 -> 改后`。`NumLODs`、`LODGroup`、`CollisionTraceFlag`、简单碰撞个数同格式。StaticMesh 最后逐级打 build 后的面数。
+
+### 退出码
+
+| 码 | 含义 |
+| --- | --- |
+| 0 | 成功 |
+| 1 | 参数错误、spec 读不了、资产 load 不到、段或根不认识、LOD 序号越界、枚举名写错 |
 | 2 | 编辑器在运行 |
 
 ## EditMaterialAsset
