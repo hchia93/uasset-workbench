@@ -20,10 +20,11 @@
 - 新增 `RenameMaterialParameter` 与 `RenameNiagaraUserParameter`，改名后改写 BP 里按字面名字设参数的调用，前者另改 MI 的覆写
 - 默认只列引用方，`-apply` 才改写。名字来自变量的调用只报不改
 
-### 2.7.3（pending）
+### 2.7.3
 
-- 新增 `AuditNiagara`，读 `NiagaraSystemExport` 的结构，查 GPU emitter 没设固定 bounds、没配 scalability、warmup 过长、emitter 数过多、SimTarget 与 renderer 不匹配
-- `AuditNiagara` 的 `Spec` 块直接喂给 `EditNiagaraSystem`，修完再审为零
+- 新增 `AuditNiagara`，规则 FX1-FX5 查 GPU emitter 用动态 bounds、没设 effect type、warmup 过长、启用的 emitter 过多、renderer 不支持 sim target，字段名同 `NiagaraSystemExport`
+- `AuditNiagara` 的 `Spec` 块直接喂给 `EditNiagaraSystem`，修完再审，带建议值的规则为零
+- README 支持表 Niagara System 的 Audit 列标 ✓
 
 ### 2.7.2
 

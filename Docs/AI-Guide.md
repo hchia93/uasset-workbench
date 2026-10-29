@@ -87,6 +87,7 @@
 | 想知道哪些贴图的压缩 / sRGB / group / 尺寸设错了 | `AuditTexture` | Audit |
 | 想知道哪些材质缺 usage flag、跟 Nanite 不兼容，或者哪个材质会拖慢 PIE 进入 | `AuditMaterial` | Audit |
 | 想知道哪些 mesh 缺 LOD、Nanite 开关与材质或面数不符、复杂碰撞当简单碰撞用、材质槽为空 | `AuditMesh` | Audit |
+| 想知道哪些 Niagara 的 GPU bounds、scalability、warmup、emitter 数、renderer 与 sim target 有问题 | `AuditNiagara`，`Spec` 直接喂 `EditNiagaraSystem` | Audit + Edit |
 | 想知道 PCG graph 有没有没接的必需 pin、孤立节点、空子图、没人读的参数，或关卡上的 PCGComponent 配置有没有问题 | `AuditPCG` | Audit |
 | 想测每个 sublevel 的加载卸载耗时 | `run_stream_metric.ps1` | 脚本 |
 | 想看每个 level 的组件数是否超预算 | 先 `LevelExport`，再 `level_budget_audit.py` | Export + 脚本 |
@@ -163,7 +164,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     '-nodes=A1B2C3D4E5F64A7B8C9D0E1F2A3B4C5D,0F1E2D3C4B5A69788796A5B4C3D2E1F0'
 ```
 
-Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位置参数留空串。`AuditTexture`、`AuditMaterial` 与 `AuditMesh` 的入口资产写 `AssetList`，不给就按 `-scandir` 扫。
+Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位置参数留空串。`AuditTexture`、`AuditMaterial`、`AuditMesh` 与 `AuditNiagara` 的入口资产写 `AssetList`，不给就按 `-scandir` 扫。
 
 ## 编辑器会话
 

@@ -48,7 +48,7 @@
 | Material / MaterialInstance | ✓ | | ✓ | | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
-| Niagara System | ✓ | | ✓ | | |
+| Niagara System | ✓ | | ✓ | | ✓ |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |

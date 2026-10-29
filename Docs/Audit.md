@@ -12,6 +12,7 @@
 | `AuditMaterial` | 材质的 Nanite 兼容与 usage flag 是否对得上实际挂载，规则 N1-N9 与 U1-U4 |
 | `AuditPCG` | PCG graph 的静态规则 P1-P7，加关卡上 PCGComponent 的 P8 |
 | `AuditMesh` | StaticMesh / SkeletalMesh 的 LOD、Nanite、碰撞与材质槽，规则 M1-M5 |
+| `AuditNiagara` | Niagara system 的 bounds、scalability、warmup、emitter 数、sim target 与 renderer，规则 FX1-FX5 |
 
 ## AuditLevelReference
 
@@ -89,7 +90,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 审计只找问题，不修。修在 Migrate 组的 `SanitizeLevelReference`，它把 level 里对旧资产的引用重指到新资产，见 [Migrate.md](Migrate.md)。
 
-`AuditTexture` 的配对操作是 Edit 组的 `EditTextureAsset`，`AuditMaterial` 的是 `EditMaterialAsset`，`AuditMesh` 的是 `EditMeshAsset`。
+`AuditTexture` 的配对操作是 Edit 组的 `EditTextureAsset`，`AuditMaterial` 的是 `EditMaterialAsset`，`AuditMesh` 的是 `EditMeshAsset`，`AuditNiagara` 的是 `EditNiagaraSystem`。
 
 ## AuditLevelTopology
 
@@ -554,6 +555,55 @@ M2 从 mesh 这一侧报，材质这一侧的 Nanite 兼容见 `AuditMaterial` �
 ```
 
 整块存成文件喂给 `EditMeshAsset`，修完再审应为零，见 [Edit.md](Edit.md)。
+
+## AuditNiagara
+
+用途: 审计 Niagara system 的运行开销与配置错误。
+
+机制: 只读，不保存任何包。每个候选 system load 后读 system 属性与每个启用 emitter 的 versioned emitter data，字段名同 `NiagaraSystemExport`。
+
+### 参数
+
+同 `AuditMesh`: `-assets=` / `-scandir=` / `-report=` / `-rules=`。默认报告 `Intermediate/AuditNiagara/report.json`，`-assets=` 走依赖链把 system 收出来。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    AuditNiagara "" 10 900 \
+    '-scandir="/Game/VFX"'
+```
+
+### 退出码
+
+同 `AuditTexture`。
+
+### 规则
+
+| 规则 | 级别 | 判定 | 建议值 |
+| --- | --- | --- | --- |
+| FX1 | Error | GPU emitter 的 `CalculateBoundsMode` 是 `Dynamic`，system 没开 `bFixedBounds`。同引擎 validation 的判定 | emitter `CalculateBoundsMode=Fixed`，沿用 emitter 现有的 `FixedBounds` |
+| FX2 | Warning | system 没设 `EffectType`，不走 scalability 也不剔除 | 无，选哪个 effect type 是设计决定 |
+| FX3 | Warning | `WarmupTime` 超过 2 秒 | system `WarmupTime=2.0` |
+| FX4 | Warning | 启用的 emitter 超过 8 个 | 无 |
+| FX5 | Error | 启用的 renderer 不支持 emitter 的 sim target，按 renderer 自己的 `IsSimTargetSupported` 判 | 另一个 sim target 撑得住全部 renderer 时给它，否则无。挪到 GPU 时一并给 `CalculateBoundsMode=Fixed` |
+
+FX5 的修法把 emitter 挪回 CPU 时，同一个 emitter 不再报 FX1。阈值硬编码在 C++ 里。
+
+改 sim target 后 script 要重编，用了 GPU 不支持的东西（比如 event script）时 `EditNiagaraSystem` 整个 target 不落盘。
+
+### 报告 JSON
+
+同 `AuditTexture`，`RunName` 固定 `AuditNiagara`，`Findings` 每项多一个 `Emitter`，system 级规则留空。
+
+`Spec` 块是 `EditNiagaraSystem` 的 spec: system 级修法进 `System.Properties`，emitter 级修法进 `Emitters` 的 `Modify` op，一个 emitter 一个 op。
+
+```json
+{"Targets":[{"AssetPath":"/Game/VFX/NS_Foo.NS_Foo","System":{"Properties":{"WarmupTime":"2.0"}},"Emitters":[{"Op":"Modify","Emitter":"Sparks","Properties":{"CalculateBoundsMode":"Fixed"}}]}]}
+```
+
+整块存成文件喂给 `EditNiagaraSystem`，修完再审，带建议值的规则应为零，见 [Edit.md](Edit.md)。
 
 ## Stream metric 工作流
 
