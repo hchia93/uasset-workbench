@@ -45,10 +45,10 @@
 | AnimSequence / AnimMontage | ✓ | | ✓ | | |
 | DataTable | ✓ | | ✓ | | |
 | DataAsset | ✓ | ✓ | ✓ | | |
-| Material / MaterialInstance | ✓ | | ✓ | | ✓ |
+| Material / MaterialInstance | ✓ | | ✓ | ✓ | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
-| Niagara System | ✓ | | ✓ | | ✓ |
+| Niagara System | ✓ | | ✓ | ✓ | ✓ |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |

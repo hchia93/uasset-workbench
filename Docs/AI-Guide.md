@@ -80,6 +80,8 @@
 | 想撤一条 CoreRedirect，先找出还引用旧名的包并 resave | `ResaveRedirectedAsset` | Migrate |
 | 已知是哪几个资产，让 CoreRedirect 解析过的引用落盘 | `ResaveAsset` | Migrate |
 | 资产改名后，把别的 level 的 import 改指到新资产 | `SanitizeLevelReference` | Migrate |
+| 改材质参数名，MI 覆写与 BP 里 `SetScalarParameterValue` 一类调用要跟着走 | `RenameMaterialParameter` | Migrate |
+| 改 Niagara user 参数名，module 链接、组件覆写与 BP 里 `SetVariableFloat` 一类调用要跟着走 | `RenameNiagaraUserParameter` | Migrate |
 | 想改 `CreateDefaultSubobject` 的名字，不想让派生 BP 和关卡里摆放的 actor 留下孤儿组件 | 先 `RenameDefaultSubobject`，再改 C++，最后对它列出的包跑 `ResaveAsset` | Migrate |
 | 想知道有没有 level 引用了已经不存在的资产 | `AuditLevelReference` | Audit |
 | 提交前 gate 一次破损引用检查 | `AuditLevelReference` | Audit |

@@ -15,10 +15,12 @@
 - 新增 `EditBehaviorTree`，增删 composite / task / decorator / service，改节点属性与 blackboard key
 - `BehaviorTreeExport` 在导出旁边写一份 `<导出>.spec.json`，原样喂回为零改动
 
-### 2.7.4（pending）
+### 2.7.4
 
-- 新增 `RenameMaterialParameter` 与 `RenameNiagaraUserParameter`，改名后改写 BP 里按字面名字设参数的调用，前者另改 MI 的覆写
-- 默认只列引用方，`-apply` 才改写。名字来自变量的调用只报不改
+- 新增 `RenameMaterialParameter`，改基材质的参数名，跟进每个 MI 的覆写（含 static switch），并改写 BP 里按字面名字设这个参数的调用
+- 新增 `RenameNiagaraUserParameter`，改 user 参数名，跟进 system 内的 module 链接、binding、renderer，并改写 BP 调用与 Niagara 组件模板上的覆写
+- 默认只列清单，`-apply` 才改写。BP 范围从资产往引用方自动收集，`-blueprints=` 可指定。名字来自连线的调用只报不改
+- README 支持表 Material / MaterialInstance 与 Niagara System 的 Migrate 列标 ✓
 
 ### 2.7.3
 

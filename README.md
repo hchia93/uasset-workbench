@@ -45,10 +45,10 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | AnimSequence / AnimMontage | ✓ | | ✓ | | |
 | DataTable | ✓ | | ✓ | | |
 | DataAsset | ✓ | ✓ | ✓ | | |
-| Material / MaterialInstance | ✓ | | ✓ | | ✓ |
+| Material / MaterialInstance | ✓ | | ✓ | ✓ | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
-| Niagara System | ✓ | | ✓ | | ✓ |
+| Niagara System | ✓ | | ✓ | ✓ | ✓ |
 | Behavior Tree | ✓ | | | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |

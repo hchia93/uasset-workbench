@@ -28,6 +28,8 @@ CoreRedirects 只覆盖调用侧: call 节点、变量引用、类引用。Bluep
 | `ResaveRedirectedAsset` | 按项目 `[CoreRedirects]` 的旧名扫包头，找出还引用旧名的包并 resave，不必事先知道是哪些资产 | dry run |
 | `SanitizeLevelReference` | 把 level 里对旧资产的每一处引用换成新资产，然后 resave 这个 level | 直接保存，`-dryrun` 只统计 |
 | `RenameDefaultSubobject` | 改 C++ `CreateDefaultSubobject` 的名字之前，把派生 Blueprint 与 level 里摆放的 actor 上存着的那个子对象先改名，改完 C++ 不留孤儿组件 | dry run |
+| `RenameMaterialParameter` | 改基材质的参数名，跟进它下面每个 MI 的覆写（含 static switch），并改写 BP 里按字面名字设这个参数的调用 | dry run |
+| `RenameNiagaraUserParameter` | 改 Niagara system 的 user 参数名，跟进 system 内的 link、binding、renderer，并改写 BP 里按字面名字设它的调用与 Niagara 组件模板上的覆写 | dry run |
 
 执行后被改动的 uasset 会出现在版本控制的工作副本里。删掉的 redirector 文件只从磁盘删除，要在版本控制里补记删除。
 
@@ -310,6 +312,56 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | 1 | 参数错，类解析不了，C++ 已不建旧名，任一实例的 Blueprint 不在范围里，或任一包没存成 |
 | 2 | 编辑器在运行 |
 
+## RenameMaterialParameter / RenameNiagaraUserParameter
+
+用途: 资产侧的参数改名。BP 按字面名字设参数，名字一改调用就静默失效，编译不报错。这两个 run 把资产内部与 BP 调用一次改齐。
+
+### 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `-material=` / `-system=` | 基材质或 Niagara system 的路径。给 MI 退 1，参数声明在基材质上 |
+| `-from=` / `-to=` | 旧名与新名。Niagara 带不带 `User.` 前缀都收 |
+| `-blueprints=` | 逗号分隔，指定要改写的 BP，给了就不自动收集 |
+| `-apply` | 落盘，不给只列清单 |
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    RenameMaterialParameter "" 10 900 \
+    '-material="/Game/Materials/M_Base" -from="Fill Amount" -to="Fill Ratio"'
+```
+
+确认清单后补 `-apply` 再跑一次。
+
+### 改什么
+
+| 对象 | `RenameMaterialParameter` | `RenameNiagaraUserParameter` |
+| --- | --- | --- |
+| 资产本身 | 基材质里同名的每个参数表达式 | user 参数存储与它的 script variable |
+| 下游资产内 | 父链通到这个基材质的每个 MI 的覆写，含 static switch，覆写值保留 | 链接到它的 module input、user 参数 binding、renderer 的属性绑定 |
+| BP 调用 | owner 是材质或 primitive component、带 `ParameterName` pin 的调用，如 `SetScalarParameterValue` / `SetScalarParameterValueOnMaterials` | owner 是 `NiagaraComponent` / `NiagaraFunctionLibrary` / `NiagaraDataInterfaceArrayFunctionLibrary`、带 `InVariableName` / `OverrideName` 一类 pin 的调用。写 `User.X` 的改成 `User.Y`，写 `X` 的改成 `Y` |
+| BP 组件 | 无 | 指向这个 system 的 Niagara 组件模板上的覆写，值保留 |
+
+### BP 作用域
+
+不给 `-blueprints=` 时，从资产往引用方走，收 Material 3 层、Niagara 2 层以内的 BP。中间经过 mesh、MI、别的 BP 都算。
+
+BP 调用不知道运行时打到的是哪个材质或 system。作用域内另一个材质也有同名参数时，那处调用同样会被改写。dry run 的清单逐条列出每处调用，确认后再 `-apply`。
+
+名字来自连线的调用只报 warning，不改，要人工核对。
+
+`UKismetMaterialLibrary` 设的是 material parameter collection 的参数，不在范围里。
+
+### 不改的东西
+
+| 对象 | 原因 |
+| --- | --- |
+| 关卡里摆放的 Niagara 组件的 per-instance 覆写 | 不扫关卡 |
+| 材质函数里的参数 | 参数属于函数，不属于这个材质 |
+
 ## 退出码
 
 | 码 | 含义 |
@@ -329,6 +381,8 @@ Migrate 组不会返回 3，3 是 Audit 组专用。退 1 的具体口径逐 com
 | `ResaveRedirectedAsset` | 没有匹配的 redirect，或至少一个包没存成 |
 | `SanitizeLevelReference` | 参数错，或至少一个 level 失败 |
 | `RenameDefaultSubobject` | 参数错、类解析不了、C++ 已不建旧名、实例的 Blueprint 不在范围里、任一包没存成 |
+| `RenameMaterialParameter` | 参数错、不是基材质、旧名不存在、新名已被占、任一包没存成 |
+| `RenameNiagaraUserParameter` | 参数错、system load 不到、旧名不存在、新名已被占、改完编译报错、任一包没存成 |
 
 没命中任何节点的 `DeleteBlueprintNode` 不算失败，退 0 并在结尾把没命中的 id 报出来。
 
@@ -345,6 +399,8 @@ Migrate 组不会返回 3，3 是 Audit 组专用。退 1 的具体口径逐 com
 | `FixupRedirector` | 只扫描 | 补 `-apply` |
 | `ResaveRedirectedAsset` | 只扫描 | 补 `-apply` |
 | `RenameDefaultSubobject` | 只扫描 | 补 `-apply` |
+| `RenameMaterialParameter` | 只扫描 | 补 `-apply` |
+| `RenameNiagaraUserParameter` | 只扫描 | 补 `-apply` |
 | `SanitizeLevelReference` | 直接落盘 | 想先看结果就加 `-dryrun` |
 
 两个 redirect 的扫描输出里逐条列出命中的 Blueprint、事件或节点、以及会搬多少组连线，确认无误再补 `-apply` 编译并保存。
