@@ -712,7 +712,7 @@ Wrapper: `output:` 行之后打印 `[run_commandlet] spec: <path>`，完成判�
 
 `Id` 是节点对象名，如 `BTTask_Wait_0`，`EditBehaviorTree` 按它寻址。`Name` 是显示名，同一棵树里会重复。
 
-`Parameters` 是子类声明的属性，值为导出文本。
+`Parameters` 是子类声明的属性，加基类上 Details 面板可编辑的设置（`FlowAbortMode`、`bInverseCondition`、Service 的 `Interval` / `RandomDeviation` 等），值为导出文本。
 
 ### Edit spec
 

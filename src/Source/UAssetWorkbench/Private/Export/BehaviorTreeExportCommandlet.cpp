@@ -328,7 +328,7 @@ TSharedPtr<FJsonObject> UBehaviorTreeExportCommandlet::ExportNode(UBTNode* Node)
     Obj->SetStringField(TEXT("Class"), Node->GetClass()->GetName());
     Obj->SetStringField(TEXT("Description"), Node->GetStaticDescription());
 
-    // Subclass properties (project-specific parameters)
+    // Subclass properties in full, base node classes only for their editable settings
     UClass* StopAtClass = UBTNode::StaticClass();
 
     // Use more specific stop class if applicable
@@ -362,13 +362,25 @@ TSharedPtr<FJsonObject> UBehaviorTreeExportCommandlet::ExportSubclassProperties(
 {
     TSharedPtr<FJsonObject> Props = MakeShared<FJsonObject>();
 
+    // Base node classes up to UBTNode still own Details settings such as FlowAbortMode and Interval. Take only their editable ones.
+    bool bInBaseClass = false;
     UClass* CurrentClass = Object->GetClass();
-    while (CurrentClass && CurrentClass != StopAtClass)
+    while (CurrentClass && CurrentClass != UBTNode::StaticClass())
     {
+        if (CurrentClass == StopAtClass)
+        {
+            bInBaseClass = true;
+        }
+
         for (TFieldIterator<FProperty> PropIt(CurrentClass, EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
         {
             FProperty* Prop = *PropIt;
             if (Prop->HasAnyPropertyFlags(CPF_Transient | CPF_Deprecated))
+            {
+                continue;
+            }
+
+            if (bInBaseClass && !Prop->HasAnyPropertyFlags(CPF_Edit))
             {
                 continue;
             }

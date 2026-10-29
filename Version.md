@@ -4,6 +4,11 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.7
+
+- `BehaviorTreeExport` 补上基类节点在 Details 面板的设置：decorator 的 `FlowAbortMode` / `bInverseCondition`，service 的 `Interval` / `RandomDeviation`，task 的 `bIgnoreRestartSelf`，composite 的 `bApplyDecoratorScope`
+- `EditBehaviorTree` 在图重建后回读写入的值。引擎因节点位置改掉的值（如 Sequence 下的 `LowerPriority` abort）报错退 1，不存盘
+
 ### 2.7.6
 
 - 新增 `SoundExport`，导出 SoundCue / SoundWave / MetaSound 的 sound class、submix、attenuation、concurrency 与 voice 设定，SoundCue 另带节点图

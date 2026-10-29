@@ -56,6 +56,9 @@ namespace
 
         // Entries that already held the given value. A whole exported spec fed back counts here instead of in Ops.
         int32 Unchanged = 0;
+
+        // Values as written, checked again after the graph rebuild, which can reset values the node position does not allow.
+        TArray<TTuple<UObject*, FString, FString>> Written;
     };
 
     // Mirrors what the editor does when it opens the asset, a tree built in code has no graph yet.
@@ -461,7 +464,9 @@ namespace
 
         for (const TPair<FString, FString>& Pair : Before)
         {
-            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("%s %s %s: %s -> %s"), *Context.AssetPath, *Instance->GetName(), *Pair.Key, *Pair.Value, *UAssetWorkbench::ReadPropertyPathText(Instance, Pair.Key));
+            const FString After = UAssetWorkbench::ReadPropertyPathText(Instance, Pair.Key);
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("%s %s %s: %s -> %s"), *Context.AssetPath, *Instance->GetName(), *Pair.Key, *Pair.Value, *After);
+            Context.Written.Emplace(Instance, Pair.Key, After);
         }
 
         return true;
@@ -975,6 +980,24 @@ bool UEditBehaviorTreeCommandlet::ApplyTarget(const TSharedPtr<FJsonObject>& Ent
     }
 
     Context.Graph->OnSave();
+
+    int32 Reset = 0;
+    for (const TTuple<UObject*, FString, FString>& Record : Context.Written)
+    {
+        const FString Current = UAssetWorkbench::ReadPropertyPathText(Record.Get<0>(), Record.Get<1>());
+        if (Current != Record.Get<2>())
+        {
+            UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s %s %s: the engine reset %s to %s, the node position does not allow it"), *AssetPath, *Record.Get<0>()->GetName(), *Record.Get<1>(), *Record.Get<2>(), *Current);
+            ++Reset;
+        }
+    }
+
+    if (Reset > 0)
+    {
+        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: %d value(s) reset by the engine, nothing saved"), *AssetPath, Reset);
+        return false;
+    }
+
     Context.Graph->UpdateErrorMessages();
     for (UEdGraphNode* EdNode : Context.Graph->Nodes)
     {

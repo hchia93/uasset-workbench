@@ -1673,6 +1673,8 @@ decorator 守的是它所在节点的分支。子树注入的 decorator 永远�
 
 同 `EditBlueprint`。图重建后节点上有错误信息时打 Warning，不退 1。
 
+图重建会把节点位置不允许的值改掉，例如 Sequence 下 decorator 的 `FlowAbortMode` 写 `LowerPriority`。写入的值在重建后回读，被改掉的报 Error 退 1，不存盘。
+
 ## 约束
 
 commandlet 没有 UI，没有 selection 状态。任何依赖"当前选中"的编辑器操作在这里不成立，对齐一类必须由 spec 显式点名节点。
