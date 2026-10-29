@@ -356,19 +356,6 @@ namespace
         return Value->AsString();
     }
 
-    // Compares by value, so 1.5 and 1.500000 count as the same and a fed-back export stays a no-op.
-    bool HoldsImportedValue(const FProperty* Property, UObject* Owner, const FString& Text)
-    {
-        const void* Current = Property->ContainerPtrToValuePtr<void>(Owner);
-        void* Temp = FMemory::Malloc(Property->GetSize(), Property->GetMinAlignment());
-        Property->InitializeValue(Temp);
-        const bool bImported = Property->ImportText_Direct(*Text, Temp, Owner, PPF_None) != nullptr;
-        const bool bSame = bImported && Property->Identical(Current, Temp);
-        Property->DestroyValue(Temp);
-        FMemory::Free(Temp);
-        return bSame;
-    }
-
     bool ApplyNodeFields(FBTEditContext& Context, UBehaviorTreeGraphNode* Node, const TSharedPtr<FJsonObject>& Op)
     {
         UBTNode* Instance = Cast<UBTNode>(Node->NodeInstance);
@@ -431,7 +418,7 @@ namespace
             if (Value->TryGetString(ValueText))
             {
                 const bool bSameText = UAssetWorkbench::ReadPropertyPathText(Instance, Pair.Key) == ValueText;
-                const bool bSame = bSameText || (Property && HoldsImportedValue(Property, Instance, ValueText));
+                const bool bSame = bSameText || (Property && UAssetWorkbench::HoldsImportedValue(Property, Instance, ValueText));
                 if (bSame)
                 {
                     ++Context.Unchanged;

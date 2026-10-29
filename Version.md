@@ -4,6 +4,13 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.8
+
+- 新增 `EditBlackboard`，增删改 Blackboard 自己的 key，写 key 类型属性（如 Object 的 `BaseClass`），换 parent。继承来的 key、重名、parent 成环退 1
+- 挂 parent 时去掉 parent 已有的持久 key（`SelfActor`），与编辑器一致
+- `EditBehaviorTree` 的说明改为 key selector，Blackboard 自己的 key 归 `EditBlackboard`
+- README 支持表加 Blackboard 一行
+
 ### 2.7.7
 
 - `BehaviorTreeExport` 补上基类节点在 Details 面板的设置：decorator 的 `FlowAbortMode` / `bInverseCondition`，service 的 `Interval` / `RandomDeviation`，task 的 `bIgnoreRestartSelf`，composite 的 `bApplyDecoratorScope`

@@ -51,6 +51,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | Sound | ✓ | | | | ✓ |
 | Niagara System | ✓ | | ✓ | ✓ | ✓ |
 | Behavior Tree | ✓ | | ✓ | | |
+| Blackboard | | | ✓ | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |
 | Any asset | | ✓ | | ✓ | |

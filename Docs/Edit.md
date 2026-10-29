@@ -15,7 +15,8 @@
 | `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
 | `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
 | `EditNiagaraSystem` | Niagara system 的系统设置与 user 参数、emitter、renderer、module 栈、static switch、module input |
-| `EditBehaviorTree` | Behavior Tree 的 composite 与 task、decorator、service、节点属性与 blackboard key、blackboard 资产 |
+| `EditBehaviorTree` | Behavior Tree 的 composite 与 task、decorator、service、节点属性与 key selector、blackboard 资产 |
+| `EditBlackboard` | Blackboard 自己的 key 与 key 类型属性、parent blackboard |
 
 失败行: `<RunName> failed for <AssetPath>. Reason: <该 target 写入期间记下的第一条 error>`，保存失败同一格式。失败不落盘。
 
@@ -1674,6 +1675,70 @@ decorator 守的是它所在节点的分支。子树注入的 decorator 永远�
 同 `EditBlueprint`。图重建后节点上有错误信息时打 Warning，不退 1。
 
 图重建会把节点位置不允许的值改掉，例如 Sequence 下 decorator 的 `FlowAbortMode` 写 `LowerPriority`。写入的值在重建后回读，被改掉的报 Error 退 1，不存盘。
+
+## EditBlackboard
+
+用途: 按 spec 改 Blackboard 资产自己的 key 与 parent。BT 节点上的 key selector 归 `EditBehaviorTree`。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    EditBlackboard "" 10 600 "-spec=C:/path/spec.json -apply"
+```
+
+无 `-apply` 是 dry run，规则同 `EditBehaviorTree`。新建空 Blackboard 用 `CreateAsset`，`Class` 写 `/Script/AIModule.BlackboardData`。
+
+### Spec
+
+顶层 `Targets[]`，每项 `AssetPath` 加任意 section，固定顺序执行: `Parent` → `Keys`。
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/AI/BB_Foo",
+      "Parent": "/Game/AI/BB_Base",
+      "Keys": [
+        { "Op": "Add", "Name": "TaskTarget", "Type": "Object", "Category": "Task", "Properties": { "BaseClass": "/Script/Engine.Actor" } },
+        { "Op": "Modify", "Name": "TaskIntent", "Type": "GameplayTag", "Description": "Why the task runs" },
+        { "Op": "Delete", "Name": "LegacyFlag" }
+      ]
+    }
+  ]
+}
+```
+
+### Parent
+
+值是 Blackboard 路径，空串或 `None` 清掉 parent。parent 链成环退 1。
+
+挂上 parent 后，parent 已有的持久 key（`SelfActor`）从自己身上去掉，与编辑器一致。其余 key 与 parent 链重名退 1。
+
+### Keys
+
+`Op` 缺省 `Modify`。只改这个 Blackboard 自己声明的 key，继承来的 key 退 1，到声明它的 Blackboard 上改。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Name` / `Type` / `Category` / `Description` / `InstanceSynced` / `Properties` | 名字已在自己或 parent 链上退 1 |
+| `Delete` | `Name` | |
+| `Modify` | `Name` / `Type` / `Category` / `Description` / `InstanceSynced` / `Properties` | 换 `Type` 时新类型从默认值开始，旧类型的属性不保留 |
+
+`Type` 收编辑器显示的短名（`Object` / `Bool` / `Enum` / `GameplayTag`）或 `BehaviorTreeExport` 打印的类名（`BlackboardKeyType_Object`）。
+
+`Properties` 写在 key 类型对象上，例 Object 的 `BaseClass`、Enum 的 `EnumType`。路径语法同 `ApplyProperties`，值已相同的跳过，按值比较。
+
+BT 的 key selector 在运行时按名字解析。删 key 或改 key 类型前，先 `BehaviorTreeExport` 查哪些节点用了这个 key。
+
+### 输出
+
+每个 target 打一行 `<AssetPath>: <N> change(s), <M> entries already held the value`，有改动时再打一行自己声明的全部 key 与类型。0 change 的 target 不保存。
+
+### 退出码
+
+同 `EditBlueprint`。
 
 ## 约束
 

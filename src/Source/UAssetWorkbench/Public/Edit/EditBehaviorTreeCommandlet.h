@@ -8,8 +8,8 @@
 class FJsonObject;
 
 // Edits a Behavior Tree through its editor graph: adds, deletes and moves composites and tasks, adds,
-// deletes and reorders decorators and services, writes node properties and blackboard keys, sets the
-// blackboard asset. The runtime tree is rebuilt from the graph. Dry run does everything except the save.
+// deletes and reorders decorators and services, writes node properties and blackboard key selectors, sets
+// the blackboard asset. Keys on the blackboard itself belong to EditBlackboard. The runtime tree is rebuilt from the graph. Dry run does everything except the save.
 //   UnrealEditor-Cmd.exe Project.uproject -run=EditBehaviorTree -spec="C:/path/spec.json" [-apply]
 // Contract: Docs/Edit.md
 UCLASS()

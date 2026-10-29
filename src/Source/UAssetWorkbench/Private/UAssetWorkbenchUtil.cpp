@@ -390,6 +390,18 @@ FString UAssetWorkbench::ReadPropertyPathText(UObject* Target, const FString& Pa
     return Value;
 }
 
+bool UAssetWorkbench::HoldsImportedValue(const FProperty* Property, UObject* Owner, const FString& Text)
+{
+    const void* Current = Property->ContainerPtrToValuePtr<void>(Owner);
+    void* Temp = FMemory::Malloc(Property->GetSize(), Property->GetMinAlignment());
+    Property->InitializeValue(Temp);
+    const bool bImported = Property->ImportText_Direct(*Text, Temp, Owner, PPF_None) != nullptr;
+    const bool bSame = bImported && Property->Identical(Current, Temp);
+    Property->DestroyValue(Temp);
+    FMemory::Free(Temp);
+    return bSame;
+}
+
 int32 UAssetWorkbench::ApplyStructProperties(UStruct* Struct, void* Base, UObject* Owner, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures)
 {
     int32 Written = 0;

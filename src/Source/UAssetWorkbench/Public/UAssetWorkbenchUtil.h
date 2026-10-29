@@ -99,6 +99,9 @@ namespace UAssetWorkbench
     // Reads back what a property path holds, in the exporter's text format. Empty when the path does not resolve.
     FString ReadPropertyPathText(UObject* Target, const FString& Path);
 
+    // Compares by value, so 1.5 and 1.500000 count as the same and a fed-back export stays a no-op.
+    bool HoldsImportedValue(const FProperty* Property, UObject* Owner, const FString& Text);
+
     // Same path syntax rooted at a bare struct instance, which is how a DataTable row is reached.
     // Owner only resolves object references inside a literal, it is not written to.
     int32 ApplyStructProperties(UStruct* Struct, void* Base, UObject* Owner, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);

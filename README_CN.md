@@ -51,6 +51,7 @@
 | Sound | ✓ | | | | ✓ |
 | Niagara System | ✓ | | ✓ | ✓ | ✓ |
 | Behavior Tree | ✓ | | ✓ | | |
+| Blackboard | | | ✓ | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |
 | 任意资产 | | ✓ | | ✓ | |

@@ -71,7 +71,9 @@
 | 改 Niagara module 的 static switch | `EditNiagaraSystem` 的 `StaticSwitches` | Edit |
 | 改 Niagara renderer、emitter、系统属性与 user 参数 | `EditNiagaraSystem` 的 `Renderers` / `Emitters` / `System` | Edit |
 | 要改 Niagara 但不确定 spec 怎么写 | 先 `NiagaraSystemExport`，改它旁边的 `.spec.json` 再喂给 `EditNiagaraSystem` | Export + Edit |
-| 给 BT 加删挪 composite 与 task、挂 decorator 与 service、改节点属性或 blackboard key | `EditBehaviorTree` | Edit |
+| 给 BT 加删挪 composite 与 task、挂 decorator 与 service、改节点属性或 key selector | `EditBehaviorTree` | Edit |
+| 给 Blackboard 加删改 key、改 key 类型属性、换 parent | `EditBlackboard` | Edit |
+| 从 Pawn 接到 BT 节点: `AIControllerClass` → controller 上的 BT 或 DataAsset 引用 → BT → Blackboard key → 节点的 key selector | `EditBlueprint` 的 `Defaults` → `DataAssetImport` → `EditBlackboard` → `EditBehaviorTree`，新资产先 `CreateAsset` | Import + Edit |
 | 要改 BT 但不确定 spec 怎么写 | 先 `BehaviorTreeExport`，改它旁边的 `.spec.json` 再喂给 `EditBehaviorTree` | Export + Edit |
 | C++ 改名后 BP 事件不再触发 | `RedirectBlueprintEvent` | Migrate |
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
@@ -144,7 +146,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     '-spec="C:/temp/create.spec.json" -unattended'
 ```
 
-Edit。八个 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串，dry run 就是不给 `-apply`。
+Edit。所有 commandlet 都用 `-spec=` 指向 spec 绝对路径，走 `EXTRA_ARGS`，`AssetList` 传空串，dry run 就是不给 `-apply`。
 
 Migrate。除 `ReparentBlueprint`、`ResaveAsset`、`SanitizeLevelReference` 外默认 dry run，确认输出无误后补 `-apply`。
 
