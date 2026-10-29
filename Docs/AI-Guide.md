@@ -70,6 +70,8 @@
 | 改 Niagara module 的 static switch | `EditNiagaraSystem` 的 `StaticSwitches` | Edit |
 | 改 Niagara renderer、emitter、系统属性与 user 参数 | `EditNiagaraSystem` 的 `Renderers` / `Emitters` / `System` | Edit |
 | 要改 Niagara 但不确定 spec 怎么写 | 先 `NiagaraSystemExport`，改它旁边的 `.spec.json` 再喂给 `EditNiagaraSystem` | Export + Edit |
+| 给 BT 加删挪 composite 与 task、挂 decorator 与 service、改节点属性或 blackboard key | `EditBehaviorTree` | Edit |
+| 要改 BT 但不确定 spec 怎么写 | 先 `BehaviorTreeExport`，改它旁边的 `.spec.json` 再喂给 `EditBehaviorTree` | Export + Edit |
 | C++ 改名后 BP 事件不再触发 | `RedirectBlueprintEvent` | Migrate |
 | delegate 参数改名后绑定处留下悬空连线 | `RedirectBlueprintPin` | Migrate |
 | 图逻辑搬进 C++ 后，BP 图里作废的那几个节点要删掉 | `DeleteBlueprintNode` | Migrate |

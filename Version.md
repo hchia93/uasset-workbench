@@ -10,10 +10,12 @@
 - 新增 `AuditSound`，查没设 concurrency、3D 用途缺 attenuation、sound class 为空
 - README 支持表补上 Sound 一行
 
-### 2.7.5（pending）
+### 2.7.5
 
-- 新增 `EditBehaviorTree`，增删 composite / task / decorator / service，改节点属性与 blackboard key
-- `BehaviorTreeExport` 在导出旁边写一份 `<导出>.spec.json`，原样喂回为零改动
+- 新增 `EditBehaviorTree`，经编辑器图增删挪 composite / task / decorator / service，改节点属性、blackboard key 与 blackboard 资产，运行时树从图重建。没有图的树先建图
+- key selector 收裸 key 名并按 blackboard 校验，`ValueOrBBKey` 字段收裸值
+- `BehaviorTreeExport` 每个节点带 `Id`，导出旁边写一份 `<导出>.spec.json`，原样喂回为零改动
+- README 支持表 Behavior Tree 的 Edit 列标 ✓
 
 ### 2.7.4
 

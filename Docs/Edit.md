@@ -15,6 +15,7 @@
 | `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
 | `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
 | `EditNiagaraSystem` | Niagara system 的系统设置与 user 参数、emitter、renderer、module 栈、static switch、module input |
+| `EditBehaviorTree` | Behavior Tree 的 composite 与 task、decorator、service、节点属性与 blackboard key、blackboard 资产 |
 
 失败行: `<RunName> failed for <AssetPath>. Reason: <该 target 写入期间记下的第一条 error>`，保存失败同一格式。失败不落盘。
 
@@ -1580,6 +1581,97 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 ### 退出码
 
 同 `EditBlueprint`。
+
+## EditBehaviorTree
+
+用途: 按 spec 改 Behavior Tree。改的是编辑器图，运行时树从图重建，编辑器打开后看到的与运行的一致。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    EditBehaviorTree "" 10 900 "-spec=C:/path/spec.json -apply"
+```
+
+无 `-apply` 是 dry run，规则同 `EditNiagaraSystem`。没有编辑器图的树（`CreateAsset` 新建的）先按编辑器的方式建图。
+
+### Spec
+
+顶层 `Targets[]`，每项 `AssetPath` 加任意 section，固定顺序执行: `Blackboard` → `Nodes` → `Decorators` → `Services`。
+
+寻址: `Root`、`BehaviorTreeExport` 的 `Id`，或同一次运行里 `Add` 给的 `Id`。
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/AI/BT_Foo",
+      "Blackboard": "/Game/AI/BB_Foo",
+      "Nodes": [
+        { "Op": "Add", "Parent": "BTComposite_Sequence_0", "Class": "BTTask_Wait", "Index": 0, "Id": "wait", "Properties": { "WaitTime": 1.5 } },
+        { "Op": "Move", "Node": "BTTask_MoveTo_0", "Index": 2 },
+        { "Op": "Modify", "Node": "BTTask_Wait_0", "Name": "Cooldown", "Properties": { "WaitTime": "(DefaultValue=3.0)" } }
+      ],
+      "Decorators": [
+        { "Op": "Add", "Node": "wait", "Class": "BTDecorator_Blackboard", "Properties": { "BlackboardKey": "CombatTarget" } }
+      ],
+      "Services": [
+        { "Op": "Delete", "Node": "BTService_DefaultFocus_0" }
+      ]
+    }
+  ]
+}
+```
+
+### Nodes
+
+`Op` 缺省 `Modify`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Parent` / `Class` / `Index` / `Id` / `Name` / `Properties` | composite 或 task。`Parent` 是 composite 或 `Root`，`Root` 只收一个 composite。`Index` 不给即追加 |
+| `Delete` | `Node` | 连同整棵子树一起删 |
+| `Move` | `Node` / `Index` / `Parent` | `Parent` 不给就在原 parent 下挪。不能挪进自己的子树 |
+| `Modify` | `Node` / `Name` / `Properties` | 任何节点都收，decorator 与 service 也走这里 |
+
+`Class` 收裸类名、带前缀的类名或类路径，BP 节点写 `_C` 类路径。
+
+子节点顺序由图里的 X 坐标决定。`Add` 与 `Move` 会把同一 parent 的子节点按新顺序横向重排，子树跟着平移。只保证顺序，排版在编辑器里再整理。
+
+Simple Parallel 的主任务与后台分支不支持增删挪。
+
+### Decorators / Services
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Node` / `Class` / `Index` / `Id` / `Properties` | `Node` 是要挂上去的 composite 或 task |
+| `Delete` | `Node` | |
+| `Move` | `Node` / `Index` | 在同一个节点上调顺序 |
+| `Modify` | `Node` / `Name` / `Properties` | 同 `Nodes` 的 `Modify` |
+
+decorator 守的是它所在节点的分支。子树注入的 decorator 永远排在最后，`Index` 越不过它们。
+
+### Properties
+
+路径语法同 `ApplyProperties`，值收 `BehaviorTreeExport` 的导出文本。另有两种简写。
+
+| 属性类型 | 简写 | 等价于 |
+| --- | --- | --- |
+| `FBlackboardKeySelector` | `"CombatTarget"` | 设 `SelectedKeyName` 并按树的 blackboard 解析。key 不存在或类型不被允许退 1 |
+| `FValueOrBBKey_*` | `1.5` / `true` / `"3.0"` | `(DefaultValue=...)` |
+
+以 `(` 开头的值按原文导入，不走简写。
+
+### 已持有的值
+
+值已经相同的条目跳过不写，计入已持有。顶层属性按值比较，`1.5` 与 `1.500000` 相同。key selector 按导出文本比较。
+
+每个 target 打一行: `<AssetPath>: <N> change(s), <M> entries already held the value`。0 change 的 target 不重建也不保存。
+
+### 退出码
+
+同 `EditBlueprint`。图重建后节点上有错误信息时打 Warning，不退 1。
 
 ## 约束
 

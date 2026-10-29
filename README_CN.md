@@ -49,7 +49,7 @@
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
 | Niagara System | ✓ | | ✓ | ✓ | ✓ |
-| Behavior Tree | ✓ | | | | |
+| Behavior Tree | ✓ | | ✓ | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
 | PCG Graph | ✓ | | ✓ | | ✓ |
 | 任意资产 | | ✓ | | ✓ | |

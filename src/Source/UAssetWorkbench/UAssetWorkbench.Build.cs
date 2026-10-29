@@ -39,6 +39,8 @@ public class UAssetWorkbench : ModuleRules
                 "NiagaraEditor",
                 "PCG",
                 "AIModule",
+                "AIGraph",
+                "BehaviorTreeEditor",
                 "AnimGraph",
                 "DirectoryWatcher",
                 "Projects",

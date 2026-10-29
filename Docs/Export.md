@@ -15,7 +15,7 @@
 | `MaterialExport` | Material 表达式与连线，MI 的参数覆写 |
 | `TextureExport` | Texture 属性，压缩、sRGB、LOD group、mip、源尺寸 |
 | `MeshExport` | StaticMesh / SkeletalMesh 的每级 LOD 面数、Nanite 设置、碰撞、材质槽、socket，SkeletalMesh 另带骨骼数与 physics asset |
-| `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key |
+| `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key，旁边另写一份 `EditBehaviorTree` spec |
 | `AnimBlueprintExport` | AnimBP EdGraph、状态机的状态、转换、blend 设置、入口状态与 event 绑定 |
 | `LevelExport` | Level 的 actor / component、与 archetype 的差异属性、碰撞与静态网格与 ISM 摘要、streaming level |
 | `PCGGraphExport` | PCG graph 的节点、pin、连线、settings delta、参数、子图引用、comment；graph instance 出参数覆写 |
@@ -693,6 +693,33 @@ Wrapper: `output:` 行之后打印 `[run_commandlet] spec: <path>`，完成判�
 `DynamicInput` input 本身不重设，它的嵌套 input 照列，`Module` 写 dynamic input 自己的 `Name`。`Default` 与 `Expression` input 不列。
 
 用法: 复制一份，只改要改的行，整份喂给 `EditNiagaraSystem`。没改的条目在写入端算作已持有，见 [Edit.md](Edit.md)。
+
+## BehaviorTreeExport
+
+`ExportType`: `BehaviorTree`
+
+### 顶层字段
+
+| 字段 | 含义 |
+| --- | --- |
+| `BehaviorTreeName` / `AssetPath` / `ExportTimestamp` | 资产身份 |
+| `BlackboardAsset` / `BlackboardKeys[]` | blackboard 路径，key 含父 blackboard 的，每项 `Name` / `Type` |
+| `RootDecorators[]` | 父树注入的 decorator，只读 |
+| `RootNode` | 根 composite，结构见下 |
+
+每个节点: `Id` / `Name` / `Class` / `Description` / `Parameters`。composite 另有 `Services[]` 与 `Children[]`，task 另有 `Services[]`。`Children[]` 每项是 `ChildIndex` / `Decorators[]` / `Node`。
+
+`Id` 是节点对象名，如 `BTTask_Wait_0`，`EditBehaviorTree` 按它寻址。`Name` 是显示名，同一棵树里会重复。
+
+`Parameters` 是子类声明的属性，值为导出文本。
+
+### Edit spec
+
+每次导出在旁边另写一份 `EditBehaviorTree` spec。路径与 wrapper 的打印同 `NiagaraSystemExport`。
+
+内容: `Blackboard`，加每个节点一个 `Nodes` `Modify`，带当前的 `Name` 与 `Properties`。decorator 与 service 也在 `Nodes` 里。`RootDecorators` 不进 spec。
+
+原样喂回是 no-op，改一行就只改一处，见 [Edit.md](Edit.md)。
 
 ## MeshExport
 
