@@ -4,10 +4,10 @@
 
 ## 2.x · UAssetWorkbench
 
-### 2.7.6（pending）
+### 2.7.6
 
-- 新增 `SoundExport`，导出 SoundCue / MetaSound 的 sound class、attenuation、concurrency 与 SoundCue 节点图
-- 新增 `AuditSound`，查没设 concurrency、3D 用途缺 attenuation、sound class 为空
+- 新增 `SoundExport`，导出 SoundCue / SoundWave / MetaSound 的 sound class、submix、attenuation、concurrency 与 voice 设定，SoundCue 另带节点图
+- 新增 `AuditSound`，规则 S1-S3 查没设 concurrency、3D 用途缺 attenuation、sound class 为空。只在 SoundCue 或 MetaSound 里播放的 SoundWave 跳过
 - README 支持表补上 Sound 一行
 
 ### 2.7.5

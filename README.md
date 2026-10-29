@@ -48,6 +48,7 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | Material / MaterialInstance | ✓ | | ✓ | ✓ | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
+| Sound | ✓ | | | | ✓ |
 | Niagara System | ✓ | | ✓ | ✓ | ✓ |
 | Behavior Tree | ✓ | | ✓ | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |

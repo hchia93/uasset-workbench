@@ -20,6 +20,7 @@
 | 看 Niagara 的栈: emitter、各 stage 的 module、static switch、input 取值方式、renderer | `NiagaraSystemExport` | Export |
 | 看贴图的压缩、sRGB、LOD group、源尺寸 | `TextureExport` | Export |
 | 看 mesh 每级 LOD 的面数、Nanite、碰撞、材质槽、socket | `MeshExport` | Export |
+| 看声音的 sound class、attenuation、concurrency，或 SoundCue 的节点图 | `SoundExport` | Export |
 | 看 PCG graph 的节点、连线、参数、子图 | `PCGGraphExport` | Export |
 | 想知道 PCG 有哪些节点可用，某节点有哪些 pin 与属性 | `PCGCatalogExport`，必给 `-filter=` | Export |
 | 用代码搭 Widget 布局，或按 spec 重建控件树 | `WidgetLayoutImport` | Import |
@@ -92,6 +93,7 @@
 | 想知道哪些材质缺 usage flag、跟 Nanite 不兼容，或者哪个材质会拖慢 PIE 进入 | `AuditMaterial` | Audit |
 | 想知道哪些 mesh 缺 LOD、Nanite 开关与材质或面数不符、复杂碰撞当简单碰撞用、材质槽为空 | `AuditMesh` | Audit |
 | 想知道哪些 Niagara 的 GPU bounds、scalability、warmup、emitter 数、renderer 与 sim target 有问题 | `AuditNiagara`，`Spec` 直接喂 `EditNiagaraSystem` | Audit + Edit |
+| 想知道哪些声音没设 concurrency、3D 用途缺 attenuation、sound class 为空 | `AuditSound` | Audit |
 | 想知道 PCG graph 有没有没接的必需 pin、孤立节点、空子图、没人读的参数，或关卡上的 PCGComponent 配置有没有问题 | `AuditPCG` | Audit |
 | 想测每个 sublevel 的加载卸载耗时 | `run_stream_metric.ps1` | 脚本 |
 | 想看每个 level 的组件数是否超预算 | 先 `LevelExport`，再 `level_budget_audit.py` | Export + 脚本 |
@@ -168,7 +170,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
     '-nodes=A1B2C3D4E5F64A7B8C9D0E1F2A3B4C5D,0F1E2D3C4B5A69788796A5B4C3D2E1F0'
 ```
 
-Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位置参数留空串。`AuditTexture`、`AuditMaterial`、`AuditMesh` 与 `AuditNiagara` 的入口资产写 `AssetList`，不给就按 `-scandir` 扫。
+Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位置参数留空串。`AuditTexture`、`AuditMaterial`、`AuditMesh`、`AuditNiagara` 与 `AuditSound` 的入口资产写 `AssetList`，不给就按 `-scandir` 扫。
 
 ## 编辑器会话
 

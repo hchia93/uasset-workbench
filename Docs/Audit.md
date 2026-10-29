@@ -13,6 +13,7 @@
 | `AuditPCG` | PCG graph 的静态规则 P1-P7，加关卡上 PCGComponent 的 P8 |
 | `AuditMesh` | StaticMesh / SkeletalMesh 的 LOD、Nanite、碰撞与材质槽，规则 M1-M5 |
 | `AuditNiagara` | Niagara system 的 bounds、scalability、warmup、emitter 数、sim target 与 renderer，规则 FX1-FX5 |
+| `AuditSound` | 可播放的声音有没有 concurrency、3D 用途有没有 attenuation、有没有 sound class，规则 S1-S3 |
 
 ## AuditLevelReference
 
@@ -604,6 +605,47 @@ FX5 的修法把 emitter 挪回 CPU 时，同一个 emitter 不再报 FX1。阈�
 ```
 
 整块存成文件喂给 `EditNiagaraSystem`，修完再审，带建议值的规则应为零，见 [Edit.md](Edit.md)。
+
+## AuditSound
+
+用途: 审计可播放的声音: SoundCue、MetaSound、单独播放的 SoundWave。
+
+机制: 只读，不保存任何包。只在 SoundCue 或 MetaSound 里播放的 SoundWave 跳过，播放时生效的是外层的设置，报告里计入 `SkippedInnerWaves`。
+
+用途分类走 Asset Registry 反向图，最多 3 层。关卡、Blueprint（含 AnimBP）、AnimSequence / Montage、Niagara system 算 3D 用途，Widget Blueprint 算 UI，其余是透明层，继续往上爬。有一处 3D 用途就算 3D。
+
+### 参数
+
+同 `AuditMesh`: `-assets=` / `-scandir=` / `-report=` / `-rules=`。默认报告 `Intermediate/AuditSound/report.json`。
+
+### 调用
+
+```bash
+bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
+    "<UE_PATH>" "<PROJECT_DIR>/MyProject.uproject" \
+    AuditSound "" 10 900 \
+    '-scandir="/Game/Audio"'
+```
+
+### 退出码
+
+同 `AuditTexture`。
+
+### 规则
+
+| 规则 | 级别 | 判定 |
+| --- | --- | --- |
+| S1 | Warning | `ConcurrencySet` 为空，也没开 `bOverrideConcurrency` |
+| S2 | Warning | 有 3D 用途，但没有 attenuation。SoundCue 开了 `bOverrideAttenuation`，或图里有 Attenuation 节点，都算有 |
+| S3 | Warning | 没填 sound class，播放时走项目默认 |
+
+三条都没有确定的建议值，报告不带 `Spec` 块。
+
+### 报告 JSON
+
+顶层: `RunName`（固定 `AuditSound`）/ `Scanned` / `SkippedInnerWaves` / `Findings` / `Summary`。`Findings` 每项 `Asset` / `Rule` / `Severity` / `Property` / `Current` / `Context`。S2 的 `Context` 点名判出 3D 用途的那个引用方。
+
+没有引用方的声音照审，代码或软引用可能会播它。只关心在用的声音时，用 `-assets=` 从关卡或 BP 收集。
 
 ## Stream metric 工作流
 

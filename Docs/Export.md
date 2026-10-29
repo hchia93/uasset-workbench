@@ -14,6 +14,7 @@
 | `NiagaraSystemExport` | Niagara system 的栈: 系统与 emitter 设置、user 参数、各 stage 的有序 module、static switch、input 取值方式、renderer |
 | `MaterialExport` | Material 表达式与连线，MI 的参数覆写 |
 | `TextureExport` | Texture 属性，压缩、sRGB、LOD group、mip、源尺寸 |
+| `SoundExport` | SoundCue / SoundWave / MetaSound 的 sound class、submix、attenuation、concurrency、voice 设定，SoundCue 另带节点图 |
 | `MeshExport` | StaticMesh / SkeletalMesh 的每级 LOD 面数、Nanite 设置、碰撞、材质槽、socket，SkeletalMesh 另带骨骼数与 physics asset |
 | `BehaviorTreeExport` | BT 树结构、节点参数、Blackboard key，旁边另写一份 `EditBehaviorTree` spec |
 | `AnimBlueprintExport` | AnimBP EdGraph、状态机的状态、转换、blend 设置、入口状态与 event 绑定 |
@@ -750,4 +751,25 @@ Wrapper: `output:` 行之后打印 `[run_commandlet] spec: <path>`，完成判�
 | `Generated` | 两者 | 由 reduction 生成，不是导入的 |
 | `ScreenSize` | 两者 | 手填值。`AutoComputeLODScreenSize` 开着时不生效，commandlet 里算不出生效值 |
 | `ReductionSettings` | 两者 | reduction 设定各字段的文本值 |
+
+## SoundExport
+
+`ExportType`: `SoundCue` / `SoundWave` / MetaSound 的类名，如 `MetaSoundSource`。其余 `USoundBase` 子类同样写类名。
+
+### 顶层字段
+
+| 字段 | 适用 | 含义 |
+| --- | --- | --- |
+| `SoundName` / `AssetPath` / `Class` / `ExportTimestamp` | 全部 | 资产身份 |
+| `Duration` / `Looping` / `MaxDistance` | 全部 | 引擎算出的时长、是否循环、可听距离 |
+| `Priority` / `VirtualizationMode` | 全部 | voice 管理 |
+| `SoundClass` / `Submix` | 全部 | 资产自己填的值，空串表示没填，播放时走项目默认 |
+| `Attenuation` | 全部 | `Asset`。SoundCue 另有 `Override`，开着时用 cue 自己的 attenuation 覆写 |
+| `Concurrency` | 全部 | `Assets[]` / `Override`。`Override` 开着时另发 `MaxCount` / `ResolutionRule` |
+| `VolumeMultiplier` / `PitchMultiplier` / `NodeCount` | SoundCue | cue 设定与节点总数 |
+| `FirstNode` | SoundCue | 节点树的根 |
+
+`FirstNode` 起每个节点: `Id` / `Class` / `Properties` / `Children[]`。`Properties` 是节点子类的属性。同一个节点接到两个 parent 时，第二次起只发 `Id` 与 `Shared: true`。`Children[]` 里的 `null` 是没接线的输入。
+
+MetaSound 的节点图不导出。
 

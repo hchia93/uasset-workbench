@@ -48,6 +48,7 @@
 | Material / MaterialInstance | ✓ | | ✓ | ✓ | ✓ |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
+| Sound | ✓ | | | | ✓ |
 | Niagara System | ✓ | | ✓ | ✓ | ✓ |
 | Behavior Tree | ✓ | | ✓ | | |
 | Level | ✓ | | ✓ | ✓ | ✓ |
