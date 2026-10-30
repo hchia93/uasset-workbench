@@ -10,7 +10,7 @@
 | `EditAnimAsset` | AnimSequence / AnimMontage 的 notify 与曲线，Sequence 另有 sync marker，Montage 另有 section 与 slot |
 | `EditTextureAsset` | Texture2D 的构建设置 |
 | `EditMeshAsset` | StaticMesh 的 LOD 数与每级 reduction、Nanite、碰撞、材质槽指派，SkeletalMesh 的 Nanite 与材质槽 |
-| `EditMaterialAsset` | Material 的 usage flag 与基本设定，MaterialInstanceConstant 的 parent 与参数覆写 |
+| `EditMaterialAsset` | Material 与 MaterialFunction 的设定和节点图，MaterialInstanceConstant 与 MaterialFunctionInstance 的 parent 与参数覆写，MaterialParameterCollection 的参数 |
 | `EditDataTable` | DataTable 既有行的属性值 |
 | `EditLevel` | 关卡里已摆放 actor 的属性，含 instanced 子对象 |
 | `EditPCGGraph` | 按 spec 改 PCG graph：参数、图级设定、节点、节点属性、连线、排版 |
@@ -1085,9 +1085,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 ## EditMaterialAsset
 
-用途: 按 spec 改材质。`UMaterial` 改 usage flag 与基本设定，`UMaterialInstanceConstant` 改 parent 与参数覆写。spec 形状与 `AuditMaterial` 报告的 `Spec` 块一致，审计结果可以直接喂回。
-
-节点图不在范围内。增删连表达式走 Python 的 `unreal.MaterialEditingLibrary`，那边有完整脚本接口。
+用途: 按 spec 改材质类资产。`UMaterial` 与 `UMaterialFunction` 改设定和节点图，`UMaterialInstanceConstant` 与 `UMaterialFunctionInstance` 改 parent 与参数覆写，`UMaterialParameterCollection` 改参数。Material 与 MaterialInstanceConstant 的 `Properties` 形状与 `AuditMaterial` 报告的 `Spec` 块一致，审计结果可以直接喂回。
 
 ### 调用
 
@@ -1107,7 +1105,17 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 ### Spec
 
-一个 target 是材质还是材质实例，由 `AssetPath` 指向的类决定，两边收的 key 不同。
+顶层 `Targets[]`，每项 `AssetPath` 加 `Properties` / `Parameters` / `Nodes` / `NodeProperties` / `Edges` / `Layout`，其他键退 1。收哪些键由 `AssetPath` 指向的类决定。
+
+| 资产 | `Properties` | `Parameters` | `Nodes` / `NodeProperties` / `Edges` / `Layout` |
+| --- | --- | --- | --- |
+| Material | 收 | | 收 |
+| MaterialFunction | 收 | | 收 |
+| MaterialInstanceConstant | 收 | | |
+| MaterialFunctionInstance | 收 | | |
+| MaterialParameterCollection | | 收 | |
+
+图 section 写在非图资产上退 1，`Parameters` 写在非 MPC 上退 1。
 
 ```json
 {
@@ -1151,13 +1159,17 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | `TwoSided` | bool |
 | `OpacityMaskClipValue` | 浮点 |
 
-表外的属性名退 1，报错里列出整张表。
+表外的属性名走反射，路径语法同 `DataAssetImport`，名字取 `MaterialExport` 的 `Settings` 键，日志打改前改后。
 
 ### bAutomaticallySetUsageInEditor 关着时的写法
 
 `SetMaterialUsage` 在 `bAutomaticallySetUsageInEditor` 为 false 时是空转，这时只能直接写 `bUsedWith*` 位域，引擎自己在 `FbxSkeletalMeshImport` 里也是这么干的。commandlet 两条路都走：先按 `SetMaterialUsage` 试，读回来还不是目标值就用反射直接写。
 
 同一个 spec 里既关 `bAutomaticallySetUsageInEditor` 又开某个 flag 时，前者先落，后者自动走直写那条路。
+
+### MaterialFunction 可写属性
+
+全部走反射，路径语法同 `DataAssetImport`，例如 `Description` / `bExposeToLibrary` / `MaterialFunctionUsage`。日志打改前改后。
 
 ### MaterialInstanceConstant 可写 section
 
@@ -1172,16 +1184,130 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 参数名以 parent 为准。parent 上没有这个名字就退 1，报错里列出 parent 实际有的同类参数名。
 
+### MaterialFunctionInstance 可写 section
+
+| Section | 说明 |
+| --- | --- |
+| `Parent` | 新 parent 的函数路径 |
+| `ScalarParameters` | `{ 参数名: 数值 }` |
+| `VectorParameters` | `{ 参数名: "(R=,G=,B=,A=)" }` |
+| `TextureParameters` | `{ 参数名: 贴图资产路径 }` |
+| `StaticSwitchParameters` | `{ 参数名: bool }` |
+
+参数名以 base function 的参数节点为准。查不到就退 1，报错里列出 base 实际有的同类参数名。
+
+### MaterialParameterCollection 的 Parameters
+
+数组，每项 `Op` 加 `Name`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Type`（默认 `Scalar`）/ `Value` | `Type` 取 `Scalar` / `Vector`。`Value` 可省，标量写数字，向量写 `(R=,G=,B=,A=)` |
+| `Set` | `Value` | 形状同 `Add` |
+| `Remove` | | |
+| `Rename` | `NewName` | 材质按 Id 绑 collection 参数，改名不断引用 |
+
+重名、查无此名退 1，报错里列出现有参数。
+
+### 图 Writer
+
+Material 与 MaterialFunction 的节点图。固定顺序，不按 spec 键顺序。
+
+| 顺序 | Spec key | 做什么 |
+| --- | --- | --- |
+| 1 | `Nodes` | 加删节点、挪位 |
+| 2 | `NodeProperties` | 节点属性 |
+| 3 | `Edges` | 接断连线 |
+| 4 | `Layout` | 排版 |
+
+任一 writer 失败整个 target 不落盘。
+
+节点寻址：`Node` / `From` / `To` 字段与 `NodeProperties` 的键接受 `MaterialExport` 导出的 `Name`、本 spec 里 `Add` 给的 `Id`、或唯一的 `Label`。撞名或找不到时退 1 并列出全部节点。`Material` 指材质输出节点，只能出现在 `Edges` 的 `To`。`Id` 只在本轮 run 有效。
+
+### Nodes
+
+数组，每项 `Op`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Add` | `Id` / `Class` / `PositionX` / `PositionY` / `Function` / `Comment` / `Properties` | `Class` 收导出的类名、去掉 `MaterialExpression` 前缀的短名如 `Multiply`、或完整路径。`Function` 只对 `MaterialFunctionCall` 有效，先于 `Properties` 套上，pin 才存在。`Comment` 写节点注释。`Properties` 在创建时套上 |
+| `Delete` | `Node` | 连线一并断开。还有 usage 的 reroute 声明拒删，先删 usage |
+| `Move` | `Node` / `PositionX` / `PositionY` | |
+
+`Class` 写 `Comment` 建注释框，用 `Properties` 写 `Text` / `SizeX` / `SizeY` / `CommentColor`。
+
+### NodeProperties
+
+对象，键是节点，值是属性对象。路径语法同 `DataAssetImport`。每个属性都会触发 `PreEditChange` / `PostEditChangeProperty`，参数改名这类节点侧逻辑照常执行。
+
+两个特殊键走 setter。
+
+| 键 | 值 | 做什么 |
+| --- | --- | --- |
+| `MaterialFunction` | 函数路径 | 只对 `MaterialFunctionCall` 有效，重建调用节点的 pin |
+| `Declaration` | reroute 声明节点的键 | 只对 `NamedRerouteUsage` 有效，绑定 usage |
+
+### Edges
+
+数组，每项 `Op`，缺省 `Connect`。
+
+| Op | 字段 | 说明 |
+| --- | --- | --- |
+| `Connect` | `From` / `FromPin` / `To` / `ToPin` | `FromPin` 写输出名或索引，空即第一个输出。`ToPin` 写输入名，编辑器的类型后缀可省，写 `Alpha Threshold` 即命中 `Alpha Threshold (S)`。`ToPin` 空只在节点只有一个输入时成立。`To` 写 `Material` 时 `ToPin` 是 `MaterialExport` 的 `OutputConnections` 键。成环退 1 并指出是哪条线 |
+| `Disconnect` | `To` / `ToPin` | |
+| `DisconnectAll` | `Node` | 断开该节点的全部输入与从它出去的全部连线 |
+
+pin 找不到退 1，报错里列出该节点实际的 pin。
+
+### Layout
+
+对象，`Op` 只有 `Arrange`。按到汇点（材质输出节点或函数输出）的最长路径分列，往左排。每个节点对准它所喂节点的 pin 平均高度，再整列居中。reroute 声明排在它的 usage 左边。函数输出按 `SortPriority` 叠放在锚点。排版前框住节点的注释框，排版后按这些节点重新包裹。
+
+| 字段 | 默认 |
+| --- | --- |
+| `PosX` / `PosY` | 材质输出节点现有坐标，函数取第一个输出的坐标 |
+| `Spacing` | 80 |
+| `RowSpacing` | 40 |
+
+节点不记尺寸，宽高按标题、pin 名与预览图估算。
+
+### 例子
+
+```json
+{
+  "Targets": [
+    {
+      "AssetPath": "/Game/Path/MF_Invert.MF_Invert",
+      "Nodes": [
+        { "Op": "Add", "Id": "in", "Class": "FunctionInput", "Properties": { "InputName": "Value", "InputType": "FunctionInput_Scalar" } },
+        { "Op": "Add", "Id": "invert", "Class": "OneMinus" },
+        { "Op": "Add", "Id": "out", "Class": "FunctionOutput", "Properties": { "OutputName": "Result" } }
+      ],
+      "Edges": [
+        { "From": "in", "To": "invert" },
+        { "From": "invert", "To": "out" }
+      ],
+      "Layout": { "Op": "Arrange" }
+    }
+  ]
+}
+```
+
 ### 写入顺序
 
 Material。
 
-1. `PreEditChange(nullptr)`
-2. `bAutomaticallySetUsageInEditor`
-3. usage flag
-4. 其余基本设定
-5. `PostEditChange()`，加进整轮共用的一个 `FMaterialUpdateContext`
-6. `-apply` 时保存包
+1. 编辑器路径下先关掉该资产已打开的编辑器。材质编辑器改的是副本，Apply 会覆盖本轮写入
+2. `PreEditChange(nullptr)`
+3. `bAutomaticallySetUsageInEditor`
+4. usage flag
+5. 其余设定
+6. 图 writer
+7. `PostEditChange()`，加进整轮共用的一个 `FMaterialUpdateContext`
+8. 动过图时做编译检查，有编译错误退 1，不落盘
+9. `-apply` 时保存包
+
+编译检查只在编辑器开着、走 queue 时生效。独立 commandlet 跑在 `-nullrhi`，没有材质资源，只打一条 skipped warning。
 
 MaterialInstanceConstant。
 
@@ -1190,6 +1316,34 @@ MaterialInstanceConstant。
 3. 一个 `FMaterialInstanceParameterUpdateContext` 一次性落，析构时只跑一次 `UpdateStaticPermutation`
 4. `MarkPackageDirty`
 5. `-apply` 时保存包
+
+MaterialFunction。
+
+1. 关掉该资产已打开的编辑器
+2. `PreEditChange(nullptr)`
+3. `Properties`
+4. 图 writer
+5. 动过图时每个 FunctionOutput 都必须有连线，否则退 1
+6. `PostEditChange()`
+7. `UpdateMaterialFunction`，重编所有已加载的调用方
+8. `-apply` 时保存包
+
+MaterialFunctionInstance。
+
+1. `PreEditChange(nullptr)`
+2. `Parent`
+3. 参数覆写
+4. `UpdateParameterSet`
+5. `PostEditChange()`
+6. `UpdateMaterialFunction`
+7. `-apply` 时保存包
+
+MaterialParameterCollection。
+
+1. `PreEditChange(nullptr)`
+2. op 依次执行
+3. `PostEditChange()`，按改前快照决定哪些材质重编
+4. `-apply` 时保存包
 
 dry run 做完除保存外的全部步骤。整轮共用一个 `FMaterialUpdateContext`，spec 里几个材质就只有一次 renderer 更新。
 
@@ -1202,7 +1356,7 @@ dry run 做完除保存外的全部步骤。整轮共用一个 `FMaterialUpdateC
 | 码 | 含义 |
 | --- | --- |
 | 0 | 成功 |
-| 1 | 参数错误、spec 读不了、资产 load 不到、key 不认识、枚举名写错、参数名不在 parent 上 |
+| 1 | 参数错误、spec 读不了、资产 load 不到、key 不认识、枚举名写错、参数名不在 parent 或 base 上、target 键不认识、图 section 写在非图资产上、`Parameters` 写在非 MPC 上、节点或 pin 找不到、成环、编译错误、函数输出没接线 |
 | 2 | 编辑器在运行 |
 
 任一 target 失败整轮不落盘。

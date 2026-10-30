@@ -4,6 +4,13 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.9
+
+- `MaterialExport` 支持 MaterialFunction（含 Layer / LayerBlend）、MaterialFunctionInstance、MaterialParameterCollection。节点多出 `Label`、坐标、`Properties`（与类默认值的差异）、`Function`、`Declaration`、`OutputPins`，材质多出 `Settings`、`Comments`，`-full` 输出全量
+- `EditMaterialAsset` 新增 Material 与 MaterialFunction 的节点图编辑：`Nodes` / `NodeProperties` / `Edges` / `Layout`。排版按最长路径分列并重新包裹注释框，改图后在编辑器里做编译检查，有错不落盘
+- `EditMaterialAsset` 新增 MaterialFunctionInstance 的 parent 与参数覆写、MaterialParameterCollection 参数的增删改与改名，Material 表外设定走反射
+- README 支持表加 MaterialFunction / MaterialFunctionInstance 与 MaterialParameterCollection 两行
+
 ### 2.7.8
 
 - 新增 `EditBlackboard`，增删改 Blackboard 自己的 key，写 key 类型属性（如 Object 的 `BaseClass`），换 parent。继承来的 key、重名、parent 成环退 1

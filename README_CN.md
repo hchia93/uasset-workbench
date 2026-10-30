@@ -46,6 +46,8 @@
 | DataTable | ✓ | | ✓ | | |
 | DataAsset | ✓ | ✓ | ✓ | | |
 | Material / MaterialInstance | ✓ | | ✓ | ✓ | ✓ |
+| MaterialFunction / MaterialFunctionInstance | ✓ | | ✓ | | |
+| MaterialParameterCollection | ✓ | | ✓ | | |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
 | Sound | ✓ | | | | ✓ |

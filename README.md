@@ -46,6 +46,8 @@ An editor plugin that lets scripts and AI agents read, write, edit and audit Unr
 | DataTable | ✓ | | ✓ | | |
 | DataAsset | ✓ | ✓ | ✓ | | |
 | Material / MaterialInstance | ✓ | | ✓ | ✓ | ✓ |
+| MaterialFunction / MaterialFunctionInstance | ✓ | | ✓ | | |
+| MaterialParameterCollection | ✓ | | ✓ | | |
 | Texture | ✓ | | ✓ | | ✓ |
 | StaticMesh / SkeletalMesh | ✓ | | ✓ | | ✓ |
 | Sound | ✓ | | | | ✓ |

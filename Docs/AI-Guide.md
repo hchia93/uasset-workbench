@@ -16,7 +16,7 @@
 | 看关卡里摆了什么、碰撞与静态网格配置 | `LevelExport` | Export |
 | 看 AnimBP 的状态机与转换条件 | `AnimBlueprintExport` | Export |
 | 看 BT 的树结构、节点参数、Blackboard key | `BehaviorTreeExport` | Export |
-| 看材质表达式或 MI 的参数覆写 | `MaterialExport` | Export |
+| 看材质与材质函数的节点图和设定，MI / MFI 的 parent 与参数覆写，MPC 的参数 | `MaterialExport` | Export |
 | 看 Niagara 的栈: emitter、各 stage 的 module、static switch、input 取值方式、renderer | `NiagaraSystemExport` | Export |
 | 看贴图的压缩、sRGB、LOD group、源尺寸 | `TextureExport` | Export |
 | 看 mesh 每级 LOD 的面数、Nanite、碰撞、材质槽、socket | `MeshExport` | Export |
@@ -28,6 +28,7 @@
 | 批量填 DataAsset 的属性 | `DataAssetImport` | Import |
 | 从零建一批资产，并让它们互相接线 | `CreateAsset` | Import |
 | 从零建一张 PCG graph | 先 `CreateAsset` 建空 `/Script/PCG.PCGGraph`，再 `EditPCGGraph` 填 | Import + Edit |
+| 从零建一张材质函数 | 先 `CreateAsset` 建空 `/Script/Engine.MaterialFunction`，再 `EditMaterialAsset` 填 | Import + Edit |
 | 给既有 BP 加组件、加变量、建节点接线、设默认值 | `EditBlueprint` | Edit |
 | 一次改完同一个 BP 的多个方面，要么全成要么不落盘 | `EditBlueprint` | Edit |
 | 生成完的图要排版，不想手写坐标 | `EditBlueprint` 的 `Layout` `Arrange` | Edit |
@@ -62,7 +63,7 @@
 | 改 Montage 的段落链，或 slot 里的分段与 play rate | `EditAnimAsset` 的 `Sections` / `Slots` | Edit |
 | 改贴图的 LOD group、压缩格式、sRGB、mip、尺寸上限 | `EditTextureAsset` | Edit |
 | 改 mesh 的 LOD 数与 reduction、Nanite 开关、碰撞、材质槽指派 | `EditMeshAsset` | Edit |
-| 改材质的 usage flag、BlendMode、ShadingModel，或 MI 的 parent 与参数覆写 | `EditMaterialAsset` | Edit |
+| 改材质与材质函数的设定、节点图、排版，MI / MFI 的 parent 与参数覆写，MPC 的参数 | `EditMaterialAsset` | Edit |
 | 改 DataTable 既有行的属性值 | `EditDataTable` | Edit |
 | 改关卡里某个 actor 的属性，包括它 instanced 子对象上 Python 写不进去的 `EditInstanceOnly` | `EditLevel` | Edit |
 | 给 PCG graph 加删节点、接断连线、改节点属性、改图参数、排版 | `EditPCGGraph` | Edit |
@@ -280,7 +281,7 @@ Audit。
 | `CreateAsset` 漏了 `-unattended` | 引擎的 `FMessageDialog` 不检查 commandlet 模式，某些创建路径会弹窗把进程挂住。这个参数必填 |
 | `CreateAsset` 建 Texture2D 拿到空结果 | 静默失败，先查 `FactoryProperties` 有没有给 `Width` / `Height`，且必须是 2 的幂 |
 | instanced 子对象写了 `{Class, Properties}`，又在同级另写 `"Prop.Child"` 键 | JSON 键序不保证，同级路径可能先写进旧实例，随后被新建的实例替换掉。子对象的值一律放进它的 `Properties` |
-| 想改材质的节点图，或增删 DataTable 的行 | 走 Python 更合适。`unreal.MaterialEditingLibrary` 与 `unreal.DataTableFunctionLibrary` 都有完整的脚本接口，后者的 `export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip。改既有行的属性值不在此列，走 `EditDataTable` |
+| 想增删 DataTable 的行 | 走 Python 更合适。`unreal.DataTableFunctionLibrary` 有完整的脚本接口，`export_data_table_to_json_string` / `fill_data_table_from_json_string` 是一对 round-trip。改既有行的属性值不在此列，走 `EditDataTable` |
 | 导出产物不入版本控制 | `Intermediate/UAssetExport` 是临时目录，需要留证据就自行拷走 |
 | 把 Audit 的退出码 3 当成失败 | 3 不是失败，运行本身成功，只是报告里有要处理的东西。跑不起来才是 1 |
 | `AuditLevelReference` 报出一大堆破损 | 先确认项目的插件全部启用。未挂载 content root 下的依赖会被判成 missing，那是假破损 |
@@ -293,6 +294,8 @@ Audit。
 | 担心探针改 streaming class 污染 level | 只在内存里换成 `LevelStreamingDynamic`，不落盘 |
 | `AuditMaterial` 加了 `-stats` 跑到天亮 | 二档逐材质编译代表性 shader，一个材质几十秒到几分钟。扫描模式已经压到前 20 个，仍然慢。只要某几个材质的数字就把它们写进 `-assets=`，点名的不受上限管；只要规则不要数字就别加 `-stats` |
 | `AuditMaterial` 报出成片的 U3 | U3 是「flag 开着但扫描范围里没找到消费者」，缩小的扫描范围本身就会造出一批。先把范围放到 `/Game` 再看，U3 不进 `Spec`，也不会被 `EditMaterialAsset` 自动关掉 |
+| 编辑器关着跑 `EditMaterialAsset` 改图，指望它拦下编译错误 | 改图后的编译检查只在编辑器开着时生效。独立 commandlet 跑在 `-nullrhi`，只打一条 skipped warning。要拦编译错误就开着编辑器走 queue |
+| `EditMaterialAsset` 的 `Node` 写了上一轮 spec 的 `Id` | `Id` 只在本轮有效。跨轮用导出的 `Name` 或 `Label` |
 | `level_budget_audit.py` 结论对不上现状 | 它只读 `LevelExport` 的产物，产物过期就得到过期结论。脚本会打印导出日期，先看那个 |
 | `PCGCatalogExport` 不带 `-filter=` | 全量几百个节点类刷爆上下文，先按类名或分类过滤 |
 | 把 PCG 的 `NodeId` 当 guid | 它是 object name，复制粘贴出来的节点会换名，改图前先重导一次 |

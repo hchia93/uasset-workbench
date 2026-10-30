@@ -12,7 +12,7 @@
 | `DataAssetExport` | DataAsset 子类属性 |
 | `DataTableExport` | DataTable 行结构与全部行数据 |
 | `NiagaraSystemExport` | Niagara system 的栈: 系统与 emitter 设置、user 参数、各 stage 的有序 module、static switch、input 取值方式、renderer |
-| `MaterialExport` | Material 表达式与连线，MI 的参数覆写 |
+| `MaterialExport` | Material 与 MaterialFunction 的节点图和设定，MaterialInstance 与 MaterialFunctionInstance 的 parent 与参数覆写，MaterialParameterCollection 的参数 |
 | `TextureExport` | Texture 属性，压缩、sRGB、LOD group、mip、源尺寸 |
 | `SoundExport` | SoundCue / SoundWave / MetaSound 的 sound class、submix、attenuation、concurrency、voice 设定，SoundCue 另带节点图 |
 | `MeshExport` | StaticMesh / SkeletalMesh 的每级 LOD 面数、Nanite 设置、碰撞、材质槽、socket，SkeletalMesh 另带骨骼数与 physics asset |
@@ -52,12 +52,13 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | --- | --- | --- |
 | `-graphs` | `BlueprintEdGraphExport` | `Graphs[]` 展开到 `Nodes` 与 pin |
 | `-full` | `PCGGraphExport` | `Nodes[].Settings` 出全量属性，默认只出相对 CDO 的 delta |
+| `-full` | `MaterialExport` | `Settings` 与 `Expressions[].Properties` 出全部可编辑属性，默认只出相对类默认值的差异。每个节点另发 `InputPins` |
 | `-filter=` | `PCGCatalogExport` | 按类名、标题、分类、别名的子串过滤 `Native[]`，必给 |
 | `-scandir=` | `PCGCatalogExport` | 资产段扫描范围，默认 `/Game` |
 
 不给 `-graphs` 时 `Graphs[]` 只有图级字段与 `Signature`，一个中等 Blueprint 从几千行降到几十行。`DeleteBlueprintNode` 要的 `NodeId` 只在展开态里有。
 
-其余 commandlet 没有开关，一律全量。`AnimBlueprintExport` 与 `WidgetLayoutExport` 的图恒定展开。
+表外的 commandlet 没有开关，一律全量。`AnimBlueprintExport` 与 `WidgetLayoutExport` 的图恒定展开。
 
 ## 输出
 
@@ -514,9 +515,15 @@ struct 属性写出全部字段，零值也写，形如 `Offsets=(Left=0.000000,
 
 ## MaterialExport
 
-`ExportType`: `Material` 或 `MaterialInstance`
+`ExportType`: `Material` / `MaterialInstance` / `MaterialFunction` / `MaterialFunctionInstance` / `MaterialParameterCollection`
 
-派发先试 `UMaterialInstance`，命中就走实例路径，所以 `UMaterialInstanceConstant` 一定走实例分支。
+派发顺序: `UMaterialInstance` → `UMaterial` → `UMaterialFunction`（含 Layer / LayerBlend 子类）→ `UMaterialFunctionInstance` → `UMaterialParameterCollection`。先试实例，所以 `UMaterialInstanceConstant` 一定走实例分支。其他类打 warning 跳过。
+
+| 参数 | 效果 |
+| --- | --- |
+| `-full` | `Settings` 与 `Properties` 出全部可编辑属性，默认只出相对类默认值的差异。每个节点另发 `InputPins` |
+
+`-full` 走 `EXTRA_ARGS`。
 
 ### Material
 
@@ -527,14 +534,36 @@ struct 属性写出全部字段，零值也写，形如 `Offsets=(Left=0.000000,
 | `OpacityMaskClipValue` | 恒发 | 遮罩裁剪阈值 |
 | `bAutomaticallySetUsageInEditor` | 恒发 | 决定缺 usage flag 时编辑器会不会自愈，`AuditMaterial` 的 U2 与 U4 靠它分叉 |
 | `UsageFlags` | 恒发 | 开着的 `bUsedWith*` 属性名数组，反射取，可为空数组 |
-| `Expressions[]` | 恒发 | 节点图 |
+| `Settings` | 非空 | 可编辑属性里与类默认值不同的，排除上面单独输出的字段与 usage flag，值是 ExportText 字符串。`-full` 时全量。键名即 `EditMaterialAsset` 的 `Properties` 键 |
+| `RootPositionX` / `RootPositionY` | 恒发 | 材质输出节点坐标 |
+| `Expressions[]` | 恒发 | 节点图，见下 |
+| `Comments[]` | 有注释框 | 每项 `Name` / `Text` / `PositionX` / `PositionY` / `SizeX` / `SizeY` / `Color` |
 | `OutputConnections` | 至少一个引脚有连线 | 材质输出节点的输入连接表 |
 
-`Expressions[]` 每项: `Name` / `Class` / `Description` 恒发；参数节点另发 `ParameterName` / `Group` 与按类型分叉的 `DefaultValue` 或 `DefaultTexture`；`MaterialExpressionCustom` 另发 `Code` / `OutputType` 与非空才发的 `AdditionalDefines` / `IncludeFilePaths` / `AdditionalOutputs`；有连线的输入进 `Inputs[]`，每项 `InputName` / `ConnectedTo` / `ConnectedClass` / `OutputIndex`。
+`Expressions[]` 每项。
 
-`OutputConnections` 的键是引脚名，覆盖 `BaseColor` / `Metallic` / `Specular` / `Roughness` / `Normal` / `EmissiveColor` / `Opacity` / `OpacityMask` / `WorldPositionOffset` / `AmbientOcclusion` 十个，每个值是 `Expression` / `ExpressionClass` / `OutputIndex`。
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `Name` | 恒发 | 节点对象名，`EditMaterialAsset` 的节点键 |
+| `Class` | 恒发 | 表达式类名，如 `MaterialExpressionMultiply` |
+| `Description` | 恒发 | 节点描述 |
+| `Label` | 非空 | 参数名、函数输入或输出名、reroute 声明名。`EditMaterialAsset` 的节点键可以用它寻址 |
+| `PositionX` / `PositionY` | 恒发 | 图上坐标 |
+| `Comment` | 非空 | 节点注释 |
+| `ParameterName` / `Group` | 参数节点 | 参数名与分组 |
+| `DefaultValue` / `DefaultTexture` | 参数节点 | 按类型分叉，贴图参数发 `DefaultTexture` |
+| `Code` / `OutputType` | `MaterialExpressionCustom` | HLSL 本体与输出类型 |
+| `AdditionalDefines` / `IncludeFilePaths` / `AdditionalOutputs` | `MaterialExpressionCustom`，非空 | |
+| `Function` | `MaterialFunctionCall` | 调用的函数路径 |
+| `Declaration` | `NamedRerouteUsage` | 指向的声明节点 `Name`。usage 没有连线，这是唯一的链接 |
+| `Properties` | 非空 | 与类默认值不同的可编辑属性，排除单独输出的字段与 pin，值是 ExportText 字符串。`-full` 时全量 |
+| `OutputPins` | 多于一个输出 | 按索引顺序的输出名，下游 `Inputs[].OutputIndex` 就是它的下标 |
+| `InputPins` | `-full` 且有输入 | 按索引顺序的输入名 |
+| `Inputs[]` | 有连线的输入 | 每项 `InputName` / `ConnectedTo` / `ConnectedClass` / `OutputIndex` |
 
-改材质节点图走 Python 的 `unreal.MaterialEditingLibrary`，`EditMaterialAsset` 只改设定不动图。
+`OutputConnections` 的键覆盖材质 editor-only data 上的全部 pin，用属性名，静态数组写成 `CustomizedUVs[3]`。原有的 `BaseColor` / `Metallic` / `Specular` / `Roughness` / `Normal` / `EmissiveColor` / `Opacity` / `OpacityMask` / `WorldPositionOffset` / `AmbientOcclusion` 十个键名不变。每个值是 `Expression` / `ExpressionClass` / `OutputIndex`。这些键也是 `EditMaterialAsset` 的 `Edges` 认的 pin 名。
+
+改节点图走 `EditMaterialAsset` 的 `Nodes` / `NodeProperties` / `Edges` / `Layout`，见 [Edit.md](Edit.md)。
 
 ### MaterialInstance
 
@@ -549,6 +578,40 @@ struct 属性写出全部字段，零值也写，形如 `Offsets=(Left=0.000000,
 | `BasePropertyOverrides` | 恒发 | 对象，什么都没覆盖时是 `{}` |
 
 `BasePropertyOverrides` 的四个子键各自由对应的 `bOverride_` 标志单独门控: `BlendMode` / `ShadingModel` / `TwoSided` / `OpacityMaskClipValue`。
+
+### MaterialFunction
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `MaterialFunctionName` / `AssetPath` / `ExportTimestamp` | 恒发 | 资产身份 |
+| `Class` | 恒发 | 类名，Layer / LayerBlend 是 `MaterialFunction` 的子类，共用这张图 |
+| `Description` / `bExposeToLibrary` / `MaterialFunctionUsage` | 恒发 | 函数设定 |
+| `Settings` | 非空 | 其余可编辑属性相对类默认值的差异，`-full` 时全量 |
+| `Inputs[]` | 恒发 | 调用方看到的签名，按 pin 顺序。每项 `Name` / `Expression` / `Type` / `Description` / `SortPriority` / `bUsePreviewValueAsDefault` / `PreviewValue` |
+| `Outputs[]` | 恒发 | 每项 `Name` / `Expression` / `Description` / `SortPriority` |
+| `Expressions[]` | 恒发 | 形状同 Material |
+| `Comments[]` | 有注释框 | 形状同 Material |
+
+`Inputs[]` / `Outputs[]` 的 `Expression` 是对应 FunctionInput / FunctionOutput 节点的 `Name`。
+
+### MaterialFunctionInstance
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `MaterialFunctionInstanceName` / `AssetPath` / `ExportTimestamp` | 恒发 | 资产身份 |
+| `Class` | 恒发 | 类名 |
+| `Parent` / `ParentPath` | 有 parent，成对发 | 直接指向的函数或函数实例 |
+| `Base` / `BasePath` | 有 base，成对发 | 最终解析到的函数 |
+| `ScalarParameters[]` / `VectorParameters[]` / `TextureParameters[]` / `StaticSwitchParameters[]` | 恒发 | 形状同 MaterialInstance |
+
+### MaterialParameterCollection
+
+| 字段 | 何时发 | 含义 |
+| --- | --- | --- |
+| `MaterialParameterCollectionName` / `AssetPath` / `ExportTimestamp` | 恒发 | 资产身份 |
+| `BasePath` | 有 base | base collection 的路径 |
+| `ScalarParameters[]` | 恒发 | 每项 `Name` / `DefaultValue` |
+| `VectorParameters[]` | 恒发 | 每项 `Name` / `DefaultValue`，`DefaultValue` 是 `(R=,G=,B=,A=)` 字符串 |
 
 ## PCGGraphExport
 
