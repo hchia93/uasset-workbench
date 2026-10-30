@@ -94,6 +94,7 @@
 | 想知道哪个 level 是 persistent，哪些是 sublevel | `AuditLevelTopology` | Audit |
 | 想知道哪些贴图的压缩 / sRGB / group / 尺寸设错了 | `AuditTexture` | Audit |
 | 想知道哪些材质缺 usage flag、跟 Nanite 不兼容，或者哪个材质会拖慢 PIE 进入 | `AuditMaterial` | Audit |
+| 想拦某个材质函数输出被接进 Masked 材质的 OpacityMask | `AuditMaterial` 的 G1，名单写在项目 `Config/DefaultUAssetWorkbench.ini` | Audit |
 | 想知道哪些 mesh 缺 LOD、Nanite 开关与材质或面数不符、复杂碰撞当简单碰撞用、材质槽为空 | `AuditMesh` | Audit |
 | 想知道哪些 Niagara 的 GPU bounds、scalability、warmup、emitter 数、renderer 与 sim target 有问题 | `AuditNiagara`，`Spec` 直接喂 `EditNiagaraSystem` | Audit + Edit |
 | 想知道哪些声音没设 concurrency、3D 用途缺 attenuation、sound class 为空 | `AuditSound` | Audit |

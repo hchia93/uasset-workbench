@@ -4,6 +4,11 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.10
+
+- `AuditMaterial` 新增图规则 G1：Masked 基材质的 OpacityMask 往上游走到禁止名单里的函数输出时报 Error。穿过 named reroute，进入嵌套函数内部，函数输入回到调用方继续走
+- G1 的名单写在项目的 `Config/DefaultUAssetWorkbench.ini`，`[AuditMaterial]` 段的 `+OpacityMaskForbiddenOutputs=<函数路径>:<输出名>`，名单为空时规则不产生结果
+
 ### 2.7.9
 
 - `MaterialExport` 支持 MaterialFunction（含 Layer / LayerBlend）、MaterialFunctionInstance、MaterialParameterCollection。节点多出 `Label`、坐标、`Properties`（与类默认值的差异）、`Function`、`Declaration`、`OutputPins`，材质多出 `Settings`、`Comments`，`-full` 输出全量

@@ -24,9 +24,15 @@ static_assert(WITH_EDITOR, "UAssetWorkbench commandlets are editor-only, keep th
 #include "MaterialStatsCommon.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpression.h"
+#include "Materials/MaterialExpressionFunctionInput.h"
+#include "Materials/MaterialExpressionFunctionOutput.h"
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
+#include "Materials/MaterialExpressionNamedReroute.h"
+#include "Materials/MaterialFunctionInterface.h"
 #include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialParameters.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -67,8 +73,15 @@ namespace
     {
         TEXT("N1"), TEXT("N2"), TEXT("N3"), TEXT("N4"), TEXT("N5"),
         TEXT("N6"), TEXT("N7"), TEXT("N8"), TEXT("N9"),
-        TEXT("U1"), TEXT("U2"), TEXT("U3"), TEXT("U4")
+        TEXT("U1"), TEXT("U2"), TEXT("U3"), TEXT("U4"),
+        TEXT("G1")
     };
+
+    // Project config, so the plugin carries the mechanism and the project names its own function outputs.
+    // A file of its own keeps it out of DefaultEditor.ini, which projects often park as local-only.
+    const TCHAR* kConfigFileName = TEXT("DefaultUAssetWorkbench.ini");
+    const TCHAR* kConfigSection = TEXT("AuditMaterial");
+    const TCHAR* kForbiddenMaskOutputsKey = TEXT("OpacityMaskForbiddenOutputs");
 
     const TCHAR* kSeverityError = TEXT("Error");
     const TCHAR* kSeverityWarning = TEXT("Warning");
@@ -197,6 +210,9 @@ namespace
         FString ReportPath;
         TSet<FString> Rules;
         bool bStats = false;
+
+        // "<function package>:<output name>" entries that must never reach OpacityMask in a Masked material.
+        TSet<FString> ForbiddenMaskOutputs;
     };
 
     struct FAuditState
@@ -351,12 +367,35 @@ namespace
 
             if (!bKnown)
             {
-                UE_LOG(LogUAssetWorkbenchAuditor, Error, TEXT("Unknown rule %s. Accepted: N1 N2 N3 N4 N5 N6 N7 N8 N9 U1 U2 U3 U4"), *Rule);
+                UE_LOG(LogUAssetWorkbenchAuditor, Error, TEXT("Unknown rule %s. Accepted: N1 N2 N3 N4 N5 N6 N7 N8 N9 U1 U2 U3 U4 G1"), *Rule);
                 return false;
             }
 
             OutOptions.Rules.Add(Upper);
         }
+
+        // An object path and a package path name the same function, both spellings land on the package.
+        const FString ConfigPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectConfigDir(), kConfigFileName));
+        // Combine, not Read. Read keeps "+Key" as a literal key name instead of appending to Key.
+        FConfigFile ConfigFile;
+        ConfigFile.Combine(ConfigPath);
+
+        TArray<FString> ForbiddenEntries;
+        ConfigFile.GetArray(kConfigSection, kForbiddenMaskOutputsKey, ForbiddenEntries);
+        for (const FString& Entry : ForbiddenEntries)
+        {
+            FString FunctionPath;
+            FString OutputName;
+            if (!Entry.Split(TEXT(":"), &FunctionPath, &OutputName, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+            {
+                UE_LOG(LogUAssetWorkbenchAuditor, Error, TEXT("%s [%s] %s entry '%s' is not <function path>:<output name>"), kConfigFileName, kConfigSection, kForbiddenMaskOutputsKey, *Entry);
+                return false;
+            }
+
+            const FString PackageName = FPackageName::ObjectPathToPackageName(FunctionPath.TrimStartAndEnd());
+            OutOptions.ForbiddenMaskOutputs.Add(PackageName + TEXT(":") + OutputName.TrimStartAndEnd());
+        }
+        UE_LOG(LogUAssetWorkbenchAuditor, Display, TEXT("AuditMaterial: G1 forbids %d OpacityMask source(s) from %s"), OutOptions.ForbiddenMaskOutputs.Num(), *ConfigPath);
 
         return true;
     }
@@ -1067,6 +1106,108 @@ namespace
         }
     }
 
+    // Upstream walk from a pin. A function call checks the output it is reached through, then continues
+    // inside the function from that output. A function input inside leads back to the caller's pin.
+    struct FForbiddenSourceWalk
+    {
+        const TSet<FString>& Forbidden;
+        TSet<TTuple<const UMaterialExpression*, int32, const UMaterialExpression*>> Visited;
+        TArray<UMaterialExpressionMaterialFunctionCall*> Calls;
+        FString Hit;
+
+        explicit FForbiddenSourceWalk(const TSet<FString>& InForbidden)
+            : Forbidden(InForbidden)
+        {
+        }
+
+        bool Walk(const FExpressionInput& Input)
+        {
+            UMaterialExpression* Expression = Input.Expression;
+            UMaterialExpressionMaterialFunctionCall* Caller = Calls.IsEmpty() ? nullptr : Calls.Last();
+            if (!Expression || Visited.Contains(MakeTuple(Expression, Input.OutputIndex, Caller)))
+            {
+                return false;
+            }
+            Visited.Add(MakeTuple(Expression, Input.OutputIndex, Caller));
+
+            if (UMaterialExpressionMaterialFunctionCall* Call = Cast<UMaterialExpressionMaterialFunctionCall>(Expression))
+            {
+                if (!Call->MaterialFunction || !Call->FunctionOutputs.IsValidIndex(Input.OutputIndex))
+                {
+                    return false;
+                }
+
+                const FFunctionExpressionOutput& Output = Call->FunctionOutputs[Input.OutputIndex];
+                const FString Key = Call->MaterialFunction->GetOutermost()->GetName() + TEXT(":") + Output.Output.OutputName.ToString();
+                if (Forbidden.Contains(Key))
+                {
+                    Hit = Key;
+                    return true;
+                }
+                if (!Output.ExpressionOutput)
+                {
+                    return false;
+                }
+
+                Calls.Push(Call);
+                const bool bFound = Walk(Output.ExpressionOutput->A);
+                Calls.Pop(EAllowShrinking::No);
+                return bFound;
+            }
+
+            if (const UMaterialExpressionFunctionInput* FunctionInput = Cast<UMaterialExpressionFunctionInput>(Expression))
+            {
+                if (!Caller)
+                {
+                    return false;
+                }
+
+                for (const FFunctionExpressionInput& CallerInput : Caller->FunctionInputs)
+                {
+                    if (CallerInput.ExpressionInput == FunctionInput)
+                    {
+                        Calls.Pop(EAllowShrinking::No);
+                        const bool bFound = Walk(CallerInput.Input);
+                        Calls.Push(Caller);
+                        return bFound;
+                    }
+                }
+                return false;
+            }
+
+            if (const UMaterialExpressionNamedRerouteUsage* Usage = Cast<UMaterialExpressionNamedRerouteUsage>(Expression))
+            {
+                return Usage->Declaration && Walk(Usage->Declaration->Input);
+            }
+
+            for (FExpressionInputIterator It(Expression); It; ++It)
+            {
+                if (Walk(*It.Input))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+    void RunGraphRules(const FAuditOptions& Options, FAuditState& State, FMaterialRecord& Record)
+    {
+        UMaterial* Material = Record.Material;
+        const UMaterialEditorOnlyData* EditorOnlyData = Material->GetEditorOnlyData();
+        const bool bMasked = Material->GetBlendMode() == BLEND_Masked;
+        if (!IsRuleActive(Options, TEXT("G1")) || Options.ForbiddenMaskOutputs.IsEmpty() || !bMasked || !EditorOnlyData)
+        {
+            return;
+        }
+
+        FForbiddenSourceWalk Walk(Options.ForbiddenMaskOutputs);
+        if (Walk.Walk(EditorOnlyData->OpacityMask))
+        {
+            AddMaterialFinding(State, Record.AssetPath, TEXT("G1"), kSeverityError, TEXT("OpacityMask"), Walk.Hit, FString(), FString::Printf(TEXT("listed in %s [%s] %s"), kConfigFileName, kConfigSection, kForbiddenMaskOutputsKey));
+        }
+    }
+
     void RunNaniteRules(const FAuditOptions& Options, FAuditState& State, FMaterialRecord& Record)
     {
         if (Record.NaniteMeshes.IsEmpty())
@@ -1544,6 +1685,7 @@ int32 UAuditMaterialCommandlet::Main(const FString& Params)
         FMaterialRecord& Record = State.Records[AssetPath];
         RunUsageRules(Options, State, Record);
         RunNaniteRules(Options, State, Record);
+        RunGraphRules(Options, State, Record);
     }
 
     int32 Errors = 0;

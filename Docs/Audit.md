@@ -289,7 +289,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 
 ## AuditMaterial
 
-用途: 审计 Material 与 MaterialInstance。两组规则：Nanite 兼容 N1-N9，usage flag 与实际挂载对照 U1-U4。每个基材质另外产出 `Cost` 与 `Permutation` 两块数字，`-stats` 再补一层编译出来的 shader 数字，`PIEWarmup` 把这些数字排成「谁会让 PIE 等」的名单。
+用途: 审计 Material 与 MaterialInstance。三组规则：Nanite 兼容 N1-N9，usage flag 与实际挂载对照 U1-U4，图规则 G1。每个基材质另外产出 `Cost` 与 `Permutation` 两块数字，`-stats` 再补一层编译出来的 shader 数字，`PIEWarmup` 把这些数字排成「谁会让 PIE 等」的名单。
 
 机制: 只读，不保存任何包。审计对象永远是基 `UMaterial`，usage flag 只存在于基材质上，扫到的 MI 折算回它的 parent。用途判定走 Asset Registry 反向图：基材质 → 子 MI 树 → 引用者。SkeletalMesh 与 StaticMesh 加载后读 slot，Niagara 读每个 renderer 的 `GetUsedMaterials`，ISM 与 SplineMesh 只在入口资产是 level 时扫组件。MorphTargets 与 Clothing 由 skeletal mesh 自身有没有 morph target / clothing asset 推出。
 
@@ -301,7 +301,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | `-scandir=` | 要枚举材质的内容根目录，两个都不给时默认 `/Game` |
 | `-report=` | 报告 JSON 输出路径，默认 `Intermediate/AuditMaterial/report.json` |
 | `-stats` | 开二档：逐材质编译代表性 shader，读采样器数、纹理采样数、指令数。很慢 |
-| `-rules=` | 只跑列出的规则，例如 `-rules=N3,U1`。不给就全跑。写了表里没有的规则名退 1 |
+| `-rules=` | 只跑列出的规则，例如 `-rules=N3,U1`，可选 N1-N9 / U1-U4 / G1。不给就全跑。写了表里没有的规则名退 1 |
 
 ### 调用
 
@@ -329,7 +329,7 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | --- | --- |
 | 0 | 没有 Error 或 Warning |
 | 3 | 有 Error 或 Warning，明细在报告里 |
-| 1 | 参数错误、`-assets` 路径不存在、`-rules` 规则名不认识，或报告写失败 |
+| 1 | 参数错误、`-assets` 路径不存在、`-rules` 规则名不认识、G1 名单条目格式不对，或报告写失败 |
 | 2 | 编辑器在运行 |
 
 3 不是失败。Info 不影响退出码。
@@ -364,6 +364,35 @@ N1 / N2 / N5 / N6 只报不进 `Spec`：BlendMode 与 ShadingModel 是美术决�
 U1 是事实，U2 与 U4 是它的后果，同一个缺失 flag 会同时报出 U1 加其中一条。只有 U1 进 `Spec`。
 
 规则表与阈值硬编码在 C++ 里，不出 UPROPERTY。
+
+### 图规则
+
+只对基材质判定，`Asset` 是材质。
+
+| 规则 | 级别 | 判定 | 建议值 |
+| --- | --- | --- | --- |
+| G1 | Error | BlendMode 是 Masked，OpacityMask 往上游能走到项目配置里列出的某个函数输出 | 无 |
+
+走法: 穿过 named reroute。遇到 MaterialFunctionCall 先比对经过的那个输出，再进函数内部从该输出往上走。函数内的 FunctionInput 回到调用方对应的输入继续走，所以嵌套函数与直通函数都查得到。
+
+报告里 `Property` 是 `OpacityMask`，`Current` 是命中的 `<函数包路径>:<输出名>`。没有建议值，不进 `Spec`。
+
+配置: 项目的 `Config/DefaultUAssetWorkbench.ini`，段 `[AuditMaterial]`，键 `+OpacityMaskForbiddenOutputs=<函数路径>:<输出名>`。
+
+```ini
+[AuditMaterial]
++OpacityMaskForbiddenOutputs=/Game/Path/MF_Fade:Opacity
++OpacityMaskForbiddenOutputs=/Game/Path/MF_Dither.MF_Dither:Result
+```
+
+| 情况 | 行为 |
+| --- | --- |
+| 多个输出 | 一行一条，函数路径写包路径或对象路径都行 |
+| 文件不存在或名单为空 | G1 不产生结果 |
+| 条目不是 `<函数路径>:<输出名>` | 退 1 |
+| 运行时 | 日志打一行 `G1 forbids N OpacityMask source(s) from <路径>` |
+
+名单单独放一个文件，因为项目常把 `DefaultEditor.ini` 设为本地专用。
 
 ### Cost
 
