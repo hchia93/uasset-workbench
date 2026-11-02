@@ -4,6 +4,12 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.11
+
+- `EditMaterialAsset` 的 MaterialInstanceConstant 新增 `CurveAtlasParameters`：按曲线路径写 curve atlas 参数，图集沿用 parent，行号由曲线算出，曲线与图集一并存进覆写
+- 新增 `RemoveOverrides`：删掉 MI 上的 scalar / vector / texture 覆写，改回继承 parent
+- `MaterialExport` 的 MI scalar 覆写为 curve atlas 参数时另带 `Curve` / `Atlas`
+
 ### 2.7.10
 
 - `AuditMaterial` 新增图规则 G1：Masked 基材质的 OpacityMask 往上游走到禁止名单里的函数输出时报 Error。穿过 named reroute，进入嵌套函数内部，函数输入回到调用方继续走

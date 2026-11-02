@@ -3,6 +3,8 @@
 // Editor-only by design: writes editor-only material settings. Trap any Runtime-type drift early.
 static_assert(WITH_EDITOR, "UAssetWorkbench commandlets are editor-only, keep the uplugin Module Type=Editor.");
 
+#include "Curves/CurveLinearColor.h"
+#include "Curves/CurveLinearColorAtlas.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Edit/MaterialGraphWriter.h"
@@ -74,6 +76,8 @@ namespace
         TEXT("VectorParameters"),
         TEXT("TextureParameters"),
         TEXT("StaticSwitchParameters"),
+        TEXT("CurveAtlasParameters"),
+        TEXT("RemoveOverrides"),
         TEXT("BasePropertyOverrides")
     };
 
@@ -894,6 +898,7 @@ bool UEditMaterialAssetCommandlet::ApplyMaterialInstance(UMaterialInstanceConsta
     {
         FMaterialParameterInfo Info;
         FMaterialParameterMetadata Meta;
+        EMaterialSetParameterValueFlags Flags = EMaterialSetParameterValueFlags::None;
         FString Label;
     };
 
@@ -1005,6 +1010,72 @@ bool UEditMaterialAssetCommandlet::ApplyMaterialInstance(UMaterialInstanceConsta
         }
     }
 
+    const TSharedPtr<FJsonObject>* AtlasCurves = nullptr;
+    if (Properties->TryGetObjectField(TEXT("CurveAtlasParameters"), AtlasCurves))
+    {
+        for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*AtlasCurves)->Values)
+        {
+            FString CurvePath;
+            UCurveLinearColor* Curve = Pair.Value->TryGetString(CurvePath) ? LoadObject<UCurveLinearColor>(nullptr, *CurvePath) : nullptr;
+            if (!Curve)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("CurveAtlasParameters.%s expects a loadable curve path"), *Pair.Key);
+                return false;
+            }
+
+            FPendingParameter Parameter;
+            if (!ResolveParentParameter(Instance, EMaterialParameterType::Scalar, Pair.Key, TEXT("curve atlas"), Parameter.Info))
+            {
+                return false;
+            }
+
+            // The instance keeps the atlas its parent resolves. Only the curve inside that atlas changes.
+            FMaterialParameterMetadata ParentMeta;
+            const bool bParentHasValue = Instance->Parent && Instance->Parent->GetParameterValue(EMaterialParameterType::Scalar, Parameter.Info, ParentMeta);
+            UCurveLinearColorAtlas* Atlas = bParentHasValue && ParentMeta.bUsedAsAtlasPosition ? ParentMeta.ScalarAtlas.LoadSynchronous() : nullptr;
+            float Position = 0.0f;
+            if (!Atlas || !Atlas->GetCurvePosition(Curve, Position))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("CurveAtlasParameters.%s: the parent parameter is not a curve atlas parameter, or %s is not in its atlas"), *Pair.Key, *CurvePath);
+                return false;
+            }
+
+            Parameter.Meta = FMaterialParameterMetadata(FMaterialParameterValue(Position));
+            Parameter.Meta.bUsedAsAtlasPosition = true;
+            Parameter.Meta.ScalarAtlas = Atlas;
+            Parameter.Meta.ScalarCurve = Curve;
+            Parameter.Flags = EMaterialSetParameterValueFlags::SetCurveAtlas;
+            Parameter.Label = FString::Printf(TEXT("CurveAtlasParameters.%s = %s (row %d of %s)"), *Pair.Key, *Curve->GetName(), FMath::RoundToInt32(Position), *Atlas->GetName());
+            Pending.Add(MoveTemp(Parameter));
+        }
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* RemoveNames = nullptr;
+    if (Properties->TryGetArrayField(TEXT("RemoveOverrides"), RemoveNames))
+    {
+        for (const TSharedPtr<FJsonValue>& Value : *RemoveNames)
+        {
+            FString Name;
+            if (!Value->TryGetString(Name))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("RemoveOverrides expects parameter names"));
+                return false;
+            }
+
+            const FName ParameterName(*Name);
+            auto MatchesName = [ParameterName](const auto& Override) { return Override.ParameterInfo.Name == ParameterName; };
+            const int32 RemovedCount = Instance->ScalarParameterValues.RemoveAll(MatchesName) + Instance->VectorParameterValues.RemoveAll(MatchesName) + Instance->TextureParameterValues.RemoveAll(MatchesName);
+            if (RemovedCount == 0)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("RemoveOverrides: %s has no scalar, vector or texture override on %s"), *Name, *AssetPath);
+                return false;
+            }
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("%s RemoveOverrides.%s, now inherited from the parent"), *AssetPath, *Name);
+            ++OutOps;
+        }
+    }
+
     const TSharedPtr<FJsonObject>* OverrideField = nullptr;
     if (Properties->TryGetObjectField(TEXT("BasePropertyOverrides"), OverrideField))
     {
@@ -1074,7 +1145,7 @@ bool UEditMaterialAssetCommandlet::ApplyMaterialInstance(UMaterialInstanceConsta
 
         for (const FPendingParameter& Parameter : Pending)
         {
-            UpdateContext.SetParameterValueEditorOnly(Parameter.Info, Parameter.Meta);
+            UpdateContext.SetParameterValueEditorOnly(Parameter.Info, Parameter.Meta, Parameter.Flags);
             UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("%s %s"), *AssetPath, *Parameter.Label);
             ++OutOps;
         }

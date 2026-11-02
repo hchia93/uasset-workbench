@@ -1180,6 +1180,8 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | `VectorParameters` | `{ 参数名: "(R=,G=,B=,A=)" }` |
 | `TextureParameters` | `{ 参数名: 贴图资产路径 }` |
 | `StaticSwitchParameters` | `{ 参数名: bool }` |
+| `CurveAtlasParameters` | `{ 参数名: 曲线资产路径 }`。只用于 curve atlas 参数，图集沿用 parent 解析到的那个，曲线必须在该图集里，行号由曲线算出 |
+| `RemoveOverrides` | `[ 参数名, ... ]`。删掉本 MI 上的 scalar / vector / texture 覆写，改回继承 parent。没有覆写的名字退 1 |
 | `BasePropertyOverrides` | `BlendMode` / `TwoSided` / `ShadingModel` / `OpacityMaskClipValue`，写了哪个就打开哪个 `bOverride_` |
 
 参数名以 parent 为准。parent 上没有这个名字就退 1，报错里列出 parent 实际有的同类参数名。

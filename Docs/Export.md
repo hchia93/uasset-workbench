@@ -571,7 +571,7 @@ struct 属性写出全部字段，零值也写，形如 `Offsets=(Left=0.000000,
 | --- | --- | --- |
 | `MaterialInstanceName` / `AssetPath` / `ExportTimestamp` | 恒发 | 资产身份 |
 | `Parent` / `ParentPath` | 有父材质，成对发 | 短名与完整路径 |
-| `ScalarParameters[]` | 恒发 | 每项 `Name` / `Value` |
+| `ScalarParameters[]` | 恒发 | 每项 `Name` / `Value`。curve atlas 参数另带 `Curve` / `Atlas` |
 | `VectorParameters[]` | 恒发 | 每项 `Name` / `Value`，`Value` 是 `(R=,G=,B=,A=)` 字符串不是数组 |
 | `TextureParameters[]` | 恒发 | 每项 `Name` / `Texture`，贴图非空时另有 `TexturePath` |
 | `StaticSwitchParameters[]` | 恒发 | 每项 `Name` / `Value` / `Override`，`Override` 说明是否真覆盖了父级 |

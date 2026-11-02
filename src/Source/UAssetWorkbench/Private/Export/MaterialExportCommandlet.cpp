@@ -89,6 +89,11 @@ namespace
             TSharedPtr<FJsonObject> ParamObj = MakeShared<FJsonObject>();
             ParamObj->SetStringField(TEXT("Name"), Param.ParameterInfo.Name.ToString());
             ParamObj->SetNumberField(TEXT("Value"), Param.ParameterValue);
+            if (Param.AtlasData.bIsUsedAsAtlasPosition)
+            {
+                ParamObj->SetStringField(TEXT("Curve"), Param.AtlasData.Curve.ToString());
+                ParamObj->SetStringField(TEXT("Atlas"), Param.AtlasData.Atlas.ToString());
+            }
             Array.Add(MakeShared<FJsonValueObject>(ParamObj));
         }
         return Array;
