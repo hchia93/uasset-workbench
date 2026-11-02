@@ -4,6 +4,10 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.12
+
+- 保存失败不再让编辑器崩溃：`CompileAndSavePackage` 与 `SanitizeLevelReference` 的保存改用 `GWarn` 报错。目标 `.uasset` 被另一个进程占用时（例如同项目的另一台编辑器），run 以 exit 1 结束并报出被占用的文件，queue 任务正常收尾，不再留在 `processing/`
+
 ### 2.7.11
 
 - `EditMaterialAsset` 的 MaterialInstanceConstant 新增 `CurveAtlasParameters`：按曲线路径写 curve atlas 参数，图集沿用 parent，行号由曲线算出，曲线与图集一并存进覆写

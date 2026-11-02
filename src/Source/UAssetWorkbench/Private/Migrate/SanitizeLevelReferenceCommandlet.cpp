@@ -231,6 +231,7 @@ bool USanitizeLevelReferenceCommandlet::ProcessLevel(const FString& LevelPath, c
     SaveArgs.SaveFlags = SAVE_None;
     SaveArgs.bForceByteSwapping = false;
     SaveArgs.bWarnOfLongFilename = true;
+    SaveArgs.Error = GWarn;
 
     const bool bSaved = UPackage::SavePackage(Package, World, *PackageFilename, SaveArgs);
     OutResult.bSaved = bSaved;

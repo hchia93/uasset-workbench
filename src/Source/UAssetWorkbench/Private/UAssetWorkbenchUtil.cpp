@@ -512,8 +512,15 @@ bool UAssetWorkbench::CompileAndSavePackage(UObject* Asset, bool bCompileBluepri
     FSavePackageArgs SaveArgs;
     SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
     SaveArgs.SaveFlags = SAVE_None;
+    // GError turns a failed save into a fatal error and takes the queue editor down. GWarn returns false instead.
+    SaveArgs.Error = GWarn;
 
-    return UPackage::SavePackage(Package, nullptr, *FileName, SaveArgs);
+    if (!UPackage::SavePackage(Package, nullptr, *FileName, SaveArgs))
+    {
+        UE_LOG(LogUAssetWorkbenchCore, Error, TEXT("Failed to save %s. Another process may hold %s, for example another editor of this project."), *Package->GetName(), *FileName);
+        return false;
+    }
+    return true;
 }
 
 void UAssetWorkbench::WarnIfWrittenOutsideEditor()
