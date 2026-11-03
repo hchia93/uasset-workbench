@@ -328,9 +328,9 @@ TSharedPtr<FJsonObject> ULevelExportCommandlet::ExportComponent(UActorComponent*
     }
 
     // ISM / HISM / Foliage: cap per-instance data
-    if (UInstancedStaticMeshComponent* IsmComp = Cast<UInstancedStaticMeshComponent>(Component))
+    if (UInstancedStaticMeshComponent* ISMComp = Cast<UInstancedStaticMeshComponent>(Component))
     {
-        AddInstancedComponentData(IsmComp, Json);
+        AddInstancedComponentData(ISMComp, Json);
     }
 
     TSharedPtr<FJsonObject> Delta = ExportDeltaProperties(Component, Component->GetArchetype());
@@ -342,9 +342,9 @@ TSharedPtr<FJsonObject> ULevelExportCommandlet::ExportComponent(UActorComponent*
     return Json;
 }
 
-void ULevelExportCommandlet::AddInstancedComponentData(UInstancedStaticMeshComponent* IsmComp, TSharedPtr<FJsonObject>& OutJson) const
+void ULevelExportCommandlet::AddInstancedComponentData(UInstancedStaticMeshComponent* ISMComp, TSharedPtr<FJsonObject>& OutJson) const
 {
-    const int32 InstanceCount = IsmComp->GetInstanceCount();
+    const int32 InstanceCount = ISMComp->GetInstanceCount();
     OutJson->SetNumberField(TEXT("InstanceCount"), InstanceCount);
 
     FBox Bounds(ForceInit);
@@ -354,7 +354,7 @@ void ULevelExportCommandlet::AddInstancedComponentData(UInstancedStaticMeshCompo
     for (int32 i = 0; i < InstanceCount; ++i)
     {
         FTransform InstXform;
-        if (!IsmComp->GetInstanceTransform(i, InstXform, /*bWorldSpace=*/ false)) continue;
+        if (!ISMComp->GetInstanceTransform(i, InstXform, /*bWorldSpace=*/ false)) continue;
         Bounds += InstXform.GetLocation();
 
         if (i < Sample)
@@ -383,7 +383,7 @@ void ULevelExportCommandlet::AddInstancedComponentData(UInstancedStaticMeshCompo
         for (int32 i = 0; i < InstanceCount; ++i)
         {
             FTransform InstXform;
-            if (!IsmComp->GetInstanceTransform(i, InstXform, false)) continue;
+            if (!ISMComp->GetInstanceTransform(i, InstXform, false)) continue;
             TSharedPtr<FJsonObject> XformJson = MakeShared<FJsonObject>();
             AddTransformField(InstXform, TEXT("Transform"), XformJson);
             XformJson->SetNumberField(TEXT("Index"), i);

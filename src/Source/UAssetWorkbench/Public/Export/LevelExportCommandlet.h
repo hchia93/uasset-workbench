@@ -33,7 +33,7 @@ private:
     TSharedPtr<FJsonObject> ExportDeltaProperties(UObject* Object, UObject* Archetype) const;
     TSharedPtr<FJsonObject> ExportInstancedSubobject(UObject* SubObject) const;
 
-    void AddInstancedComponentData(class UInstancedStaticMeshComponent* IsmComp, TSharedPtr<FJsonObject>& OutJson) const;
+    void AddInstancedComponentData(class UInstancedStaticMeshComponent* ISMComp, TSharedPtr<FJsonObject>& OutJson) const;
     void AddTransformField(const FTransform& Transform, const FString& FieldName, TSharedPtr<FJsonObject>& OutJson) const;
 
 };
