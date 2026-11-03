@@ -4,6 +4,10 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.13
+
+- `DataAssetExport` 的结构体值改为与结构体默认值比较后导出。之前与全零内存比较，值为 0 的字段（例如枚举第一项）被省掉，`DataAssetImport` 回灌时变成 C++ 默认值。现在省掉的字段回灌后就是默认值
+
 ### 2.7.12
 
 - 保存失败不再让编辑器崩溃：`CompileAndSavePackage` 与 `SanitizeLevelReference` 的保存改用 `GWarn` 报错。目标 `.uasset` 被另一个进程占用时（例如同项目的另一台编辑器），run 以 exit 1 结束并报出被占用的文件，queue 任务正常收尾，不再留在 `processing/`

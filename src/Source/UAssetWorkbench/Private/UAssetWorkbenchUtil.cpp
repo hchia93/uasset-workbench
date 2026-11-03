@@ -24,6 +24,7 @@
 #include "Serialization/JsonWriter.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
+#include "UObject/StructOnScope.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 
@@ -670,6 +671,23 @@ TSharedPtr<FJsonObject> UAssetWorkbench::ExportSubclassProperties(UObject* Objec
 {
     TSharedPtr<FJsonObject> Props = MakeShared<FJsonObject>();
 
+    // A null delta compares against zeroed memory and drops fields at value 0, e.g. the first enum entry.
+    // Delta against the struct defaults instead. ImportText then restores every dropped field to its default.
+    auto ExportValue = [Object](const FProperty* Property, const void* Value)
+    {
+        FString Text;
+        if (const FStructProperty* StructProp = CastField<FStructProperty>(Property))
+        {
+            FStructOnScope Defaults(StructProp->Struct);
+            Property->ExportTextItem_Direct(Text, Value, Defaults.GetStructMemory(), Object, PPF_None);
+        }
+        else
+        {
+            Property->ExportTextItem_Direct(Text, Value, nullptr, Object, PPF_None);
+        }
+        return Text;
+    };
+
     UClass* CurrentClass = Object->GetClass();
     while (CurrentClass && CurrentClass != StopAtClass)
     {
@@ -695,9 +713,7 @@ TSharedPtr<FJsonObject> UAssetWorkbench::ExportSubclassProperties(UObject* Objec
                 {
                     for (int32 i = 0; i < Num; i++)
                     {
-                        FString ElemValue;
-                        InnerProp->ExportTextItem_Direct(ElemValue, ArrayHelper.GetRawPtr(i), nullptr, Object, PPF_None);
-                        ElementsArray.Add(MakeShared<FJsonValueString>(ElemValue));
+                        ElementsArray.Add(MakeShared<FJsonValueString>(ExportValue(InnerProp, ArrayHelper.GetRawPtr(i))));
                     }
                     // Stable key (no count suffix) so external consumers can index by property name.
                     TSharedPtr<FJsonObject> ArrayInfo = MakeShared<FJsonObject>();
@@ -717,8 +733,7 @@ TSharedPtr<FJsonObject> UAssetWorkbench::ExportSubclassProperties(UObject* Objec
             }
             else
             {
-                FString Value;
-                Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(Object), nullptr, Object, PPF_None);
+                const FString Value = ExportValue(Prop, Prop->ContainerPtrToValuePtr<void>(Object));
                 if (!Value.IsEmpty())
                 {
                     Props->SetStringField(Prop->GetName(), Value);
