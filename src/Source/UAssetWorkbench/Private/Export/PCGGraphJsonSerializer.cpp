@@ -1,5 +1,6 @@
 #include "Export/PCGGraphJsonSerializer.h"
 #include "UAssetWorkbenchModule.h"
+#include "UAssetWorkbenchUtil.h"
 #include "UAssetWorkbenchVersion.h"
 
 #include "Dom/JsonObject.h"
@@ -76,7 +77,7 @@ namespace
             }
 
             FString Value;
-            Prop->ExportTextItem_Direct(Value, ValuePtr, nullptr, const_cast<UObject*>(Object), PPF_None);
+            Value += UAssetWorkbench::ExportPropertyText(Prop, ValuePtr, const_cast<UObject*>(Object));
             Props->SetStringField(Prop->GetName(), Value);
         }
 

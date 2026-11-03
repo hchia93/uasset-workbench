@@ -115,7 +115,7 @@ TSharedPtr<FJsonObject> UDataTableExportCommandlet::ExportRow(const UScriptStruc
 
         FString Value;
         const void* PropertyValue = Prop->ContainerPtrToValuePtr<void>(RowData);
-        Prop->ExportTextItem_Direct(Value, PropertyValue, nullptr, nullptr, PPF_None);
+        Value += UAssetWorkbench::ExportPropertyText(Prop, PropertyValue, nullptr);
 
         if (!Value.IsEmpty())
         {

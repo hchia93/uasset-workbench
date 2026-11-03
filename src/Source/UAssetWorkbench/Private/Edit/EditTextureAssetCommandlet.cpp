@@ -75,7 +75,7 @@ namespace
         }
 
         FString Value;
-        Property->ExportTextItem_Direct(Value, Property->ContainerPtrToValuePtr<void>(Texture), nullptr, Texture, PPF_None);
+        Value += UAssetWorkbench::ExportPropertyText(Property, Property->ContainerPtrToValuePtr<void>(Texture), Texture);
         return Value;
     }
 }

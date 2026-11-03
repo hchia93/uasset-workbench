@@ -72,7 +72,7 @@ namespace
 
                 // ExportText_InContainer with no delta skips a zero value as if it were the default.
                 FString Value;
-                Property->ExportTextItem_Direct(Value, Property->ContainerPtrToValuePtr<void>(Object, ArrayIndex), nullptr, const_cast<UObject*>(Object), PPF_None);
+                Value += UAssetWorkbench::ExportPropertyText(Property, Property->ContainerPtrToValuePtr<void>(Object, ArrayIndex), const_cast<UObject*>(Object));
                 const FString Key = Property->ArrayDim > 1 ? FString::Printf(TEXT("%s[%d]"), *Property->GetName(), ArrayIndex) : Property->GetName();
                 Props->SetStringField(Key, Value);
             }

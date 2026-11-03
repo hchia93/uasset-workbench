@@ -353,7 +353,7 @@ TSharedPtr<FJsonObject> UBlueprintEdGraphExportCommandlet::ExportBlueprint(UBlue
             if (CDO)
             {
                 FString DefaultValue;
-                Property->ExportTextItem_Direct(DefaultValue, Property->ContainerPtrToValuePtr<void>(CDO), nullptr, CDO, PPF_None);
+                DefaultValue += UAssetWorkbench::ExportPropertyText(Property, Property->ContainerPtrToValuePtr<void>(CDO), CDO);
                 if (!DefaultValue.IsEmpty())
                 {
                     VarObj->SetStringField(TEXT("Default"), DefaultValue);
@@ -963,10 +963,10 @@ void UBlueprintEdGraphExportCommandlet::ExportPropertyOverridesCompare(UObject* 
         }
 
         FString CurrentValue;
-        Prop->ExportTextItem_Direct(CurrentValue, Prop->ContainerPtrToValuePtr<void>(Instance), nullptr, Instance, PPF_None);
+        CurrentValue += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(Instance), Instance);
 
         FString DefaultValue;
-        Prop->ExportTextItem_Direct(DefaultValue, Prop->ContainerPtrToValuePtr<void>(Reference), nullptr, Reference, PPF_None);
+        DefaultValue += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(Reference), Reference);
 
         if (CurrentValue != DefaultValue)
         {
@@ -1006,7 +1006,7 @@ void UBlueprintEdGraphExportCommandlet::ExportResolvedProperties(UObject* Instan
         }
 
         FString CurrentValue;
-        Prop->ExportTextItem_Direct(CurrentValue, Prop->ContainerPtrToValuePtr<void>(Instance), nullptr, Instance, PPF_None);
+        CurrentValue += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(Instance), Instance);
 
         TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
         Entry->SetStringField(TEXT("Name"), Prop->GetName());

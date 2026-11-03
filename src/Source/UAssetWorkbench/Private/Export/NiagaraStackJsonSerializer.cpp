@@ -571,7 +571,7 @@ TSharedPtr<FJsonObject> NiagaraStackJson::ExportPropertyDelta(UObject* Object, U
             }
 
             FString Value;
-            Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(Object), nullptr, Object, PPF_None);
+            Value += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(Object), Object);
             Props->SetStringField(Prop->GetName(), Value);
         }
     }
@@ -596,7 +596,7 @@ TSharedPtr<FJsonObject> NiagaraStackJson::ExportStructDelta(const UScriptStruct*
         }
 
         FString Value;
-        Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(Data), nullptr, Owner, PPF_None);
+        Value += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(Data), Owner);
         Props->SetStringField(Prop->GetName(), Value);
     }
 

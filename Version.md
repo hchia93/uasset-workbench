@@ -4,6 +4,10 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.14
+
+- 其余导出与比对也改为与结构体默认值比较：DataTable、AnimAsset、BehaviorTree、Blueprint 图、Level 子对象、Material、Mesh、Niagara、PCG，以及 `EditTextureAsset`、Niagara 写入前的比对与 `ReadPropertyPathText`。统一走 `UAssetWorkbench::ExportPropertyText`
+
 ### 2.7.13
 
 - `DataAssetExport` 的结构体值改为与结构体默认值比较后导出。之前与全零内存比较，值为 0 的字段（例如枚举第一项）被省掉，`DataAssetImport` 回灌时变成 C++ 默认值。现在省掉的字段回灌后就是默认值

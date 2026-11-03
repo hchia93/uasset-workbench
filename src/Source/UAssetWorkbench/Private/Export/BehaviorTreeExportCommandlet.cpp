@@ -386,7 +386,7 @@ TSharedPtr<FJsonObject> UBehaviorTreeExportCommandlet::ExportSubclassProperties(
             }
 
             FString Value;
-            Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(Object), nullptr, Object, PPF_None);
+            Value += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(Object), Object);
             if (!Value.IsEmpty())
             {
                 Props->SetStringField(Prop->GetName(), Value);

@@ -37,7 +37,7 @@ namespace
             }
 
             FString Value;
-            It->ExportTextItem_Direct(Value, It->ContainerPtrToValuePtr<void>(Data), nullptr, Owner, PPF_None);
+            Value += UAssetWorkbench::ExportPropertyText(*It, It->ContainerPtrToValuePtr<void>(Data), Owner);
             Out->SetStringField(It->GetName(), Value);
         }
 

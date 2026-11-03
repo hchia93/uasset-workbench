@@ -463,7 +463,7 @@ TSharedPtr<FJsonObject> ULevelExportCommandlet::ExportInstancedSubobject(UObject
         }
 
         FString Value;
-        Prop->ExportTextItem_Direct(Value, Prop->ContainerPtrToValuePtr<void>(SubObject), nullptr, SubObject, PPF_None);
+        Value += UAssetWorkbench::ExportPropertyText(Prop, Prop->ContainerPtrToValuePtr<void>(SubObject), SubObject);
         if (!Value.IsEmpty())
         {
             Props->SetStringField(Prop->GetName(), Value);

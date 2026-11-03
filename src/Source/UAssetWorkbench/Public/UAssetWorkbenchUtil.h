@@ -96,6 +96,9 @@ namespace UAssetWorkbench
     // An instanced object, or an array of them, takes {"Class", "Properties"} per instance instead.
     int32 ApplyProperties(UObject* Target, const TSharedPtr<FJsonObject>& Properties, int32& OutFailures);
 
+    // A struct exports as a delta against its own defaults. A null delta compares against zeroed memory and drops fields at value 0, e.g. the first enum entry.
+    FString ExportPropertyText(const FProperty* Property, const void* Value, UObject* Owner);
+
     // Reads back what a property path holds, in the exporter's text format. Empty when the path does not resolve.
     FString ReadPropertyPathText(UObject* Target, const FString& Path);
 

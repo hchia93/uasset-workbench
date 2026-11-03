@@ -227,7 +227,7 @@ TSharedPtr<FJsonObject> NiagaraSystemEdit::DropUnchangedStructProperties(const U
         if (Property && Pair.Value->TryGetString(Text))
         {
             FString Current;
-            Property->ExportTextItem_Direct(Current, Property->ContainerPtrToValuePtr<void>(Data), nullptr, Owner, PPF_None);
+            Current += UAssetWorkbench::ExportPropertyText(Property, Property->ContainerPtrToValuePtr<void>(Data), Owner);
             if (Current == Text)
             {
                 ++InOutUnchanged;
