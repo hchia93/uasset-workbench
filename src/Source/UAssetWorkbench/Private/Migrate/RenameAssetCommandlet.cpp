@@ -13,6 +13,7 @@
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
 #include "Serialization/FindReferencersArchive.h"
+#include "UObject/Linker.h"
 #include "UObject/ObjectRedirector.h"
 #include "UObject/UObjectHash.h"
 
@@ -242,12 +243,17 @@ int32 URenameAssetCommandlet::Main(const FString& Params)
         return ToExitCode(EUAssetWorkbenchExitType::Success);
     }
 
+    // The save inside RenameAssets flushes pending async loads per linker. A source linker still attached reloads the
+    // old file, and an import of a class moved by this batch resolves to null and asserts in the linker.
+    TArray<UObject*> SourcePackages;
     TArray<FAssetRenameData> RenameData;
     RenameData.Reserve(Jobs.Num());
     for (const FRenameJob& Job : Jobs)
     {
+        SourcePackages.AddUnique(Job.Source->GetOutermost());
         RenameData.Emplace(Job.Source, Job.DestPackagePath, Job.DestAssetName);
     }
+    ResetLoaders(SourcePackages);
 
     {
         UAssetWorkbench::FFailureReasonCapture FailureReason;
