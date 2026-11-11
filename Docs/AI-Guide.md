@@ -36,7 +36,7 @@
 | 从零建一台状态机，连 state 与 transition | `EditBlueprint` 的 `StateMachines` | Edit |
 | 往 AnimGraph 或某个 state 里加 sequence player / slot 并接 pose | `EditBlueprint` 的 `Graph`，`Type` 写类路径 | Edit |
 | 改 anim graph 节点的设定（sequence player 的 PlayRate / StartPosition、state 的 function binding） | `EditBlueprint` 的 `NodeProperties` | Edit |
-| 图里要建 cast、Make / Break Struct、Switch、SpawnActor、Timeline、委托绑定（Bind Event to / Create Event），或 override 一个父类事件 | `EditBlueprint` 的 `Graph`，节点类型表见 [Edit.md](Edit.md) | Edit |
+| 图里要建 cast、Make / Break Struct、Switch、SpawnActor、Timeline、委托绑定（Bind Event to / Create Event）、组件委托事件（组件右键 Add Event），或 override 一个父类事件 | `EditBlueprint` 的 `Graph`，节点类型表见 [Edit.md](Edit.md) | Edit |
 | 改 timeline 的长度，或 float 轨道的关键帧 | `EditBlueprint` 的 `Timelines` | Edit |
 | 建一条 `TimeRemaining < x` 形态的 transition rule | `EditBlueprint` 的 `Graph`，`Type` 写 `AnimGetter` | Edit |
 | 把 anim node 的某个属性绑到变量或属性路径上，等同 Details 面板的 Bind 下拉框 | `EditBlueprint` 的 `Graph` 的 `Bind` | Edit |

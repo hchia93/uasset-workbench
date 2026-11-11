@@ -30,6 +30,7 @@
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CallParentFunction.h"
+#include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_ConstructObjectFromClass.h"
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_CustomEvent.h"
@@ -54,6 +55,7 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/PackageName.h"
 #include "UObject/UnrealType.h"
 
@@ -1602,6 +1604,41 @@ namespace
 
                 UK2Node_AddDelegate* Node = NewObject<UK2Node_AddDelegate>(Graph);
                 Node->SetFromProperty(Property, bSelfContext, Property->GetOwnerClass());
+                Result = Node;
+            }
+            else if (Type == TEXT("ComponentBoundEvent"))
+            {
+                FString ComponentName;
+                FString DelegateName;
+                if (!Desc->TryGetStringField(TEXT("Component"), ComponentName) || !Desc->TryGetStringField(TEXT("Delegate"), DelegateName))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("ComponentBoundEvent needs a Component and a Delegate"));
+                    return nullptr;
+                }
+
+                const FObjectProperty* ComponentProperty = FindFProperty<FObjectProperty>(Blueprint->SkeletonGeneratedClass, FName(*ComponentName));
+                UClass* ComponentClass = ComponentProperty ? ComponentProperty->PropertyClass.Get() : nullptr;
+                if (!ComponentClass || !ComponentClass->IsChildOf(UActorComponent::StaticClass()))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("ComponentBoundEvent: %s has no component property '%s'"), *Blueprint->GetName(), *ComponentName);
+                    return nullptr;
+                }
+
+                const FMulticastDelegateProperty* Property = FindFProperty<FMulticastDelegateProperty>(ComponentClass, FName(*DelegateName));
+                if (!Property || !Property->HasAnyPropertyFlags(CPF_BlueprintAssignable))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("ComponentBoundEvent: '%s' has no BlueprintAssignable delegate '%s'. Delegates: %s"), *ComponentClass->GetName(), *DelegateName, *DescribeAssignableDelegates(ComponentClass));
+                    return nullptr;
+                }
+
+                if (FKismetEditorUtilities::FindBoundEventForComponent(Blueprint, Property->GetFName(), ComponentProperty->GetFName()))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("ComponentBoundEvent: %s already binds '%s' on '%s'"), *Blueprint->GetName(), *DelegateName, *ComponentName);
+                    return nullptr;
+                }
+
+                UK2Node_ComponentBoundEvent* Node = NewObject<UK2Node_ComponentBoundEvent>(Graph);
+                Node->InitializeComponentBoundEventParams(ComponentProperty, Property);
                 Result = Node;
             }
             else if (Type == TEXT("CreateDelegate"))

@@ -456,6 +456,7 @@ BP 自己声明的组件属性挂在 SCS node 的 template 上，继承来的 na
 | `Event` | `EventName`, `Class` | override 父类或原生事件，`Class` 默认取 BP 的父类。同一事件已经实现是错误，报错列出可 override 的事件名 |
 | `CustomEvent` | `EventName` | |
 | `AddDelegate` | `Delegate`, `Class` | Bind Event to。`Class` 是委托所在的类，默认本 BP，只认 `BlueprintAssignable` 委托。委托不在本 BP 继承链上时，`self` pin 接持有它的对象 |
+| `ComponentBoundEvent` | `Component`, `Delegate` | 组件委托的事件节点，等同组件右键 Add Event。`Component` 是本 BP 继承链上的组件属性名，只认 `BlueprintAssignable` 委托。同一组件的同一委托已经绑过是错误 |
 | `CreateDelegate` | `Function` | Create Event，`Function` 是本 BP 的函数 |
 | `Branch` / `MultiGate` / `Self` / `Knot` | 无 | `Knot` 是 reroute |
 | `Sequence` | `OutputCount` | |

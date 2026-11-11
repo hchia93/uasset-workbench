@@ -4,6 +4,11 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.15
+
+- `EditBlueprint` 的 `Graph` 新增节点类型 `ComponentBoundEvent`：组件委托的事件节点，等同组件右键 Add Event。只认 `BlueprintAssignable` 委托，同一组件的同一委托已经绑过是错误
+- `RenameAsset` 一次传多对资产，且批内资产互相引用时，保存阶段不再断言崩溃。改名前先断开源包的 linker，存盘时不再从旧文件重建已搬走的导出
+
 ### 2.7.14
 
 - 其余导出与比对也改为与结构体默认值比较：DataTable、AnimAsset、BehaviorTree、Blueprint 图、Level 子对象、Material、Mesh、Niagara、PCG，以及 `EditTextureAsset`、Niagara 写入前的比对与 `ReadPropertyPathText`。统一走 `UAssetWorkbench::ExportPropertyText`
