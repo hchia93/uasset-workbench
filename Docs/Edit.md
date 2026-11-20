@@ -37,10 +37,11 @@ queue 路径: run 摘要、toast 与 done 文件的 `Error` 字段写 `<RunName>
 | `Defaults` | `FBlueprintDefaultsWriter` | `DefaultsMode` | CDO 与组件模板的属性值 |
 | `Functions` | `FBlueprintFunctionWriter` | `MyBlueprintMode` | 函数图 |
 | `Dispatchers` | `FBlueprintDispatcherWriter` | `MyBlueprintMode` | 事件分发器与其签名图 |
+| `Events` | `FBlueprintEventWriter` | `MyBlueprintMode` | 自定义事件改名 |
 | `Interfaces` | `FBlueprintInterfaceWriter` | `ClassSettingsMode` | 实现的接口 |
 | `StateMachines` | `FBlueprintStateMachineWriter` | `GraphMode` | 状态机、state、transition |
 | `Graph` | `FBlueprintGraphWriter` | `GraphMode` | 节点、节点属性、绑定、pin 默认值、连线 |
-| `Timelines` | `FBlueprintTimelineWriter` | 无 | 既有 timeline 的长度与 float 轨道关键帧 |
+| `Timelines` | `FBlueprintTimelineWriter` | 无 | 既有 timeline 的名字、长度与 float 轨道 |
 | `Layout` | `FBlueprintLayoutWriter` | 无（纯外观） | 节点位置 |
 
 执行顺序固定，与 spec 里的 key 顺序无关：
@@ -627,6 +628,18 @@ Op: `Add` / `Rename` / `Modify` / `Remove`，按 spec 顺序执行。所有 op �
 
 形状与 `BlueprintEdGraphExport -graphs` 打印的 `EventDispatchers[].Signature` 一致，导出的那段可以直接贴回来当 spec。
 
+### Events
+
+Op: `Rename`，用 `Name` 点名自定义事件，`NewName` 给新名。
+
+```json
+"Events": [
+  { "Op": "Rename", "Name": "TriggerFoo", "NewName": "PlayFoo" }
+]
+```
+
+图里调用这个事件的节点与 `Create Event` 绑定一并改指。新名过编辑器的事件名校验，撞名报错。覆写父类的自定义事件名字归父类，改名报错。
+
 ### Interfaces
 
 Op: `Add` / `Remove`，用 `Interface` 点名接口，不用 `Name`。
@@ -653,7 +666,8 @@ Op: `Add` / `Remove`，用 `Interface` 点名接口，不用 `Name`。
 
 | 字段 | 说明 |
 | --- | --- |
-| `Length` | 秒，正数。`Length` 与 `FloatTracks` 至少给一个 |
+| `Length` | 秒，正数。`Length`、`FloatTracks`、`NewName` 至少给一个 |
+| `NewName` | timeline 改名，timeline 节点与它的变量引用一并改。在 `Length` 与 `FloatTracks` 之后执行，那两项仍用旧名点名 |
 | `FloatTracks[].Keys` | 整条替换。`Time` 必须递增，`InterpMode` 与 `EditAnimAsset` 的 `Curves` 同一套词，省略取 `RCIM_Linear`。tangent 按 auto 重算 |
 | `FloatTracks[].NewName` | 轨道改名。timeline 节点上的同名 pin 一起改，连线保留。新名与其他轨道或节点已有的 pin 撞名时报错。`Keys` 与 `NewName` 至少给一个，同时给时先写 key 再改名 |
 

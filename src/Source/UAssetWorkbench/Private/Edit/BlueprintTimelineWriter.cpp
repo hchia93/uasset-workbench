@@ -11,6 +11,7 @@
 #include "Engine/TimelineTemplate.h"
 #include "K2Node_Timeline.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/Kismet2NameValidators.h"
 
 namespace
 {
@@ -91,9 +92,11 @@ namespace
             const bool bHasLength = Desc->TryGetNumberField(TEXT("Length"), Length);
             const TArray<TSharedPtr<FJsonValue>>* Tracks = nullptr;
             const bool bHasTracks = Desc->TryGetArrayField(TEXT("FloatTracks"), Tracks);
-            if (!bHasLength && !bHasTracks)
+            FString NewTimelineName;
+            const bool bRename = Desc->TryGetStringField(TEXT("NewName"), NewTimelineName);
+            if (!bHasLength && !bHasTracks && !bRename)
             {
-                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: timeline '%s' writes nothing. Expected Length or FloatTracks"), *Context.AssetPath, *TimelineName);
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: timeline '%s' writes nothing. Expected Length, FloatTracks or NewName"), *Context.AssetPath, *TimelineName);
                 return false;
             }
 
@@ -120,6 +123,21 @@ namespace
                         return false;
                     }
                 }
+            }
+
+            // Last, so tracks and length above still address the timeline by its old name.
+            if (bRename)
+            {
+                const FName RequestedName(*NewTimelineName);
+                const EValidatorResult Validity = FKismetNameValidator(Context.Blueprint).IsValid(RequestedName);
+                if (Validity != EValidatorResult::Ok || !FBlueprintEditorUtils::RenameTimeline(Context.Blueprint, Timeline->GetVariableName(), RequestedName))
+                {
+                    UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: cannot rename timeline '%s' to '%s', %s"), *Context.AssetPath, *TimelineName, *NewTimelineName, *INameValidatorInterface::GetErrorString(NewTimelineName, Validity));
+                    return false;
+                }
+
+                UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("  %s: timeline '%s' -> '%s'"), *Context.Blueprint->GetName(), *TimelineName, *NewTimelineName);
+                ++Context.Ops;
             }
 
             Context.bNeedsStructuralRecompile = true;

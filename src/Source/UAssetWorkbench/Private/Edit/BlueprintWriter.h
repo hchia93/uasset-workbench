@@ -53,6 +53,7 @@ TUniquePtr<IBlueprintWriter> MakeBlueprintGraphWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintLayoutWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintFunctionWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintDispatcherWriter();
+TUniquePtr<IBlueprintWriter> MakeBlueprintEventWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintInterfaceWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintStateMachineWriter();
 TUniquePtr<IBlueprintWriter> MakeBlueprintTimelineWriter();

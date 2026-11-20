@@ -26,6 +26,7 @@ namespace
         Writers.Add(MakeBlueprintDefaultsWriter());
         Writers.Add(MakeBlueprintFunctionWriter());
         Writers.Add(MakeBlueprintDispatcherWriter());
+        Writers.Add(MakeBlueprintEventWriter());
         Writers.Add(MakeBlueprintInterfaceWriter());
         Writers.Add(MakeBlueprintStateMachineWriter());
         Writers.Add(MakeBlueprintGraphWriter());
@@ -168,7 +169,7 @@ bool UEditBlueprintCommandlet::ApplyTarget(const TSharedPtr<FJsonObject>& Entry,
 
     if (Matched == 0)
     {
-        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s writes nothing. Expected one of Components, Widgets, WidgetAnimations, Variables, Defaults, Functions, Dispatchers, Interfaces, StateMachines, Graph, Timelines, Layout"), *AssetPath);
+        UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s writes nothing. Expected one of Components, Widgets, WidgetAnimations, Variables, Defaults, Functions, Dispatchers, Events, Interfaces, StateMachines, Graph, Timelines, Layout"), *AssetPath);
         return false;
     }
 
