@@ -6,8 +6,11 @@
 #include "Curves/RichCurve.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "EdGraph/EdGraphPin.h"
 #include "Engine/Blueprint.h"
 #include "Engine/TimelineTemplate.h"
+#include "K2Node_Timeline.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 
 namespace
 {
@@ -140,6 +143,70 @@ namespace
                 UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: timeline '%s' has no float track '%s'. Float tracks: %s"), *Context.AssetPath, *TimelineName, *TrackName, *DescribeFloatTracks(Timeline));
                 return false;
             }
+
+            FString NewTrackName;
+            const bool bRename = TrackDesc->TryGetStringField(TEXT("NewName"), NewTrackName);
+            const bool bHasKeys = TrackDesc->HasField(TEXT("Keys"));
+            if (!bRename && !bHasKeys)
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: float track '%s' of timeline '%s' writes nothing. Expected Keys or NewName"), *Context.AssetPath, *TrackName, *TimelineName);
+                return false;
+            }
+
+            if (bHasKeys && !ApplyKeys(Context, Timeline, *Track, TrackDesc))
+            {
+                return false;
+            }
+
+            return !bRename || RenameFloatTrack(Context, Timeline, *Track, NewTrackName);
+        }
+
+        bool RenameFloatTrack(FBlueprintEditContext& Context, UTimelineTemplate* Timeline, FTTFloatTrack& Track, const FString& NewTrackName) const
+        {
+            const FString TimelineName = Timeline->GetVariableName().ToString();
+            const FName OldName = Track.GetTrackName();
+            const FName RequestedName(*NewTrackName);
+            if (!Timeline->IsNewTrackNameValid(RequestedName))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: timeline '%s' cannot rename track '%s' to '%s', the name is empty or another track owns it"), *Context.AssetPath, *TimelineName, *OldName.ToString(), *NewTrackName);
+                return false;
+            }
+
+            UK2Node_Timeline* TimelineNode = FBlueprintEditorUtils::FindNodeForTimeline(Context.Blueprint, Timeline);
+            if (TimelineNode && TimelineNode->FindPin(RequestedName))
+            {
+                UE_LOG(LogUAssetWorkbenchEditor, Error, TEXT("%s: timeline '%s' cannot rename track '%s' to '%s', the timeline node already has a pin of that name"), *Context.AssetPath, *TimelineName, *OldName.ToString(), *NewTrackName);
+                return false;
+            }
+
+            UE_LOG(LogUAssetWorkbenchEditor, Display, TEXT("  %s: timeline '%s' track '%s' -> '%s'"), *Context.Blueprint->GetName(), *TimelineName, *OldName.ToString(), *NewTrackName);
+
+            Timeline->Modify();
+            if (TimelineNode)
+            {
+                // Track pins sit after the built-in pins. Search from the end, the pin keeps its links through the rename.
+                for (int32 PinIndex = TimelineNode->Pins.Num() - 1; PinIndex >= 0; --PinIndex)
+                {
+                    UEdGraphPin* Pin = TimelineNode->Pins[PinIndex];
+                    if (Pin->PinName == OldName)
+                    {
+                        Pin->Modify();
+                        Pin->PinName = RequestedName;
+                        break;
+                    }
+                }
+            }
+
+            Track.SetTrackName(RequestedName, Timeline);
+            ++Context.Ops;
+            return true;
+        }
+
+        bool ApplyKeys(FBlueprintEditContext& Context, UTimelineTemplate* Timeline, FTTFloatTrack& TrackRef, const TSharedPtr<FJsonObject>& TrackDesc) const
+        {
+            const FString TimelineName = Timeline->GetVariableName().ToString();
+            const FString TrackName = TrackRef.GetTrackName().ToString();
+            FTTFloatTrack* Track = &TrackRef;
 
             // An external curve is a shared asset, writing it here would retune every timeline that points at it.
             if (Track->bIsExternalCurve || !Track->CurveFloat)

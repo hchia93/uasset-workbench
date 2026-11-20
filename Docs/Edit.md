@@ -655,6 +655,7 @@ Op: `Add` / `Remove`，用 `Interface` 点名接口，不用 `Name`。
 | --- | --- |
 | `Length` | 秒，正数。`Length` 与 `FloatTracks` 至少给一个 |
 | `FloatTracks[].Keys` | 整条替换。`Time` 必须递增，`InterpMode` 与 `EditAnimAsset` 的 `Curves` 同一套词，省略取 `RCIM_Linear`。tangent 按 auto 重算 |
+| `FloatTracks[].NewName` | 轨道改名。timeline 节点上的同名 pin 一起改，连线保留。新名与其他轨道或节点已有的 pin 撞名时报错。`Keys` 与 `NewName` 至少给一个，同时给时先写 key 再改名 |
 
 导出的 `FloatTracks[]` 带 `Keys`，可以原样喂回来。导出里 `External: true` 的轨道读的是共享曲线资产，拒写，改那个资产本身。增删轨道与 vector / color / event 轨道不在范围内。
 
