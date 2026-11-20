@@ -297,7 +297,9 @@ bash Plugins/UAssetWorkbench/scripts/run_commandlet.sh \
 | --- | --- |
 | C++ 已经不建 `-oldname` 这个子对象 | 报错退出。说明 C++ 先改了，孤儿已经产生 |
 | Blueprint | 从 asset registry 的 native parent 找派生 Blueprint，在 CDO 上改名，不编译。编译会按 C++ 构造函数重建子对象，名字又变回旧的 |
+| ChildActor 模板 | `ChildActorComponent` 把整个模板 actor 存在拥有它的 Blueprint 里，那个 Blueprint 不必派生自目标类。先读包头，名字表里有旧名的 `.uasset` 才加载，模板 actor 上的子对象一并改名 |
 | level | 先读包头，名字表里有旧名的 `.umap` 与 external actor 包才加载。按包加载，不初始化 world，sublevel 不会丢 navmesh chunk |
+| 加载顺序 | 所有 Blueprint、模板包与 level 先全部加载，再开始改名。改名后才加载的子 Blueprint 会同时拥有新旧两份，改名后才加载的实例找不到原型，继承值被清空并存成覆写 |
 | level 里的实例 | 存盘时跟随 actor 类 CDO 上那份子对象的名字。actor 的 Blueprint 不在这次范围里，或者是直接摆放的原生 actor，报错 |
 | 任何一处报错 | 一个包都不存，全部成功或全部不写 |
 | 存完 | 重读每个包的名字表，新名不在就报错 |

@@ -111,6 +111,39 @@ namespace
         return Result;
     }
 
+    // A ChildActorComponent stores a full template actor inside the Blueprint that owns the component. That Blueprint need not derive from a target class.
+    TArray<FString> FindTemplatePackages(const FString& ScanDir, FName OldName, const TArray<FString>& BlueprintPackages, const TArray<FString>& LevelPackages)
+    {
+        TArray<FString> Result;
+
+        FString Directory;
+        if (!FPackageName::TryConvertLongPackageNameToFilename(ScanDir + TEXT("/"), Directory) || !IFileManager::Get().DirectoryExists(*Directory))
+        {
+            return Result;
+        }
+
+        TArray<FString> Files;
+        IFileManager::Get().FindFilesRecursive(Files, *Directory, TEXT("*.uasset"), true, false);
+        for (const FString& File : Files)
+        {
+            UAssetWorkbench::FPackageTables Tables;
+            FString PackageName;
+            if (!UAssetWorkbench::ReadPackageTables(File, Tables) || !Tables.NameMap.Contains(OldName))
+            {
+                continue;
+            }
+
+            const bool bHasPackageName = FPackageName::TryConvertFilenameToLongPackageName(File, PackageName);
+            if (bHasPackageName && !BlueprintPackages.Contains(PackageName) && !LevelPackages.Contains(PackageName))
+            {
+                Result.Add(PackageName);
+            }
+        }
+
+        Result.Sort();
+        return Result;
+    }
+
     // Saving would also write whatever edit is still pending in this editor, which is not this run's to commit.
     UPackage* LoadCleanPackage(const FString& PackageName)
     {
@@ -165,6 +198,30 @@ namespace
         Outer->MarkPackageDirty();
         ++OutRenamed;
         return true;
+    }
+
+    // Returns false on a failure. Covers the template actors that ChildActorComponents store inside this package.
+    bool RenameTemplateActors(UPackage* Package, const FRenameRequest& Request, int32& OutRenamed)
+    {
+        // Collected first, a rename inside the walk changes the object hash it iterates.
+        TArray<AActor*> Templates;
+        ForEachObjectWithPackage(Package, [&Request, &Templates](UObject* Object)
+        {
+            AActor* Actor = Cast<AActor>(Object);
+            const bool bIsTemplate = Actor && Actor->HasAnyFlags(RF_ArchetypeObject) && !Actor->HasAnyFlags(RF_ClassDefaultObject);
+            if (bIsTemplate && IsTargetClass(Actor->GetClass(), Request.Classes))
+            {
+                Templates.Add(Actor);
+            }
+            return true;
+        });
+
+        bool bSucceeded = true;
+        for (AActor* Template : Templates)
+        {
+            bSucceeded &= RenameOwnedSubobject(Template, Request, OutRenamed);
+        }
+        return bSucceeded;
     }
 }
 
@@ -236,9 +293,31 @@ int32 URenameDefaultSubobjectCommandlet::Main(const FString& Params)
     TArray<UPackage*> PackagesToSave;
 
     const TArray<FString> BlueprintPackages = FindBlueprintPackages(ScanDir, Request.Classes);
+    const TArray<FString> LevelPackages = FindLevelPackages(ScanDir, Request.OldName);
+    const TArray<FString> TemplatePackages = FindTemplatePackages(ScanDir, Request.OldName, BlueprintPackages, LevelPackages);
+
+    // Every package loads before the first rename. A child Blueprint loaded after its parent was renamed instances the new name off the parent CDO and owns both.
+    // A placed actor loaded after its Blueprint was renamed finds no archetype for the old name. Its inherited values reset and save as overrides.
+    TArray<UPackage*> LoadedBlueprintPackages;
     for (const FString& PackageName : BlueprintPackages)
     {
-        UPackage* Package = LoadCleanPackage(PackageName);
+        LoadedBlueprintPackages.Add(LoadCleanPackage(PackageName));
+    }
+
+    TArray<UPackage*> LoadedTemplatePackages;
+    for (const FString& PackageName : TemplatePackages)
+    {
+        LoadedTemplatePackages.Add(LoadCleanPackage(PackageName));
+    }
+
+    TArray<UPackage*> LoadedLevelPackages;
+    for (const FString& PackageName : LevelPackages)
+    {
+        LoadedLevelPackages.Add(LoadCleanPackage(PackageName));
+    }
+
+    for (UPackage* Package : LoadedBlueprintPackages)
+    {
         UBlueprint* Blueprint = Package ? Cast<UBlueprint>(Package->FindAssetInPackage()) : nullptr;
         if (!Blueprint || !Blueprint->GeneratedClass)
         {
@@ -248,7 +327,9 @@ int32 URenameDefaultSubobjectCommandlet::Main(const FString& Params)
 
         // No compile. It rebuilds the CDO subobjects from the C++ constructor, which still creates the old name.
         const int32 Before = Renamed;
-        if (!RenameOwnedSubobject(Blueprint->GeneratedClass->GetDefaultObject(), Request, Renamed))
+        const bool bDefaultObjectSucceeded = RenameOwnedSubobject(Blueprint->GeneratedClass->GetDefaultObject(), Request, Renamed);
+        const bool bTemplatesSucceeded = RenameTemplateActors(Package, Request, Renamed);
+        if (!bDefaultObjectSucceeded || !bTemplatesSucceeded)
         {
             ++Failed;
         }
@@ -258,9 +339,27 @@ int32 URenameDefaultSubobjectCommandlet::Main(const FString& Params)
         }
     }
 
-    for (const FString& PackageName : FindLevelPackages(ScanDir, Request.OldName))
+    for (UPackage* Package : LoadedTemplatePackages)
     {
-        UPackage* Package = LoadCleanPackage(PackageName);
+        if (!Package)
+        {
+            ++Failed;
+            continue;
+        }
+
+        const int32 Before = Renamed;
+        if (!RenameTemplateActors(Package, Request, Renamed))
+        {
+            ++Failed;
+        }
+        else if (Renamed > Before && Request.bApply)
+        {
+            PackagesToSave.AddUnique(Package);
+        }
+    }
+
+    for (UPackage* Package : LoadedLevelPackages)
+    {
         if (!Package)
         {
             ++Failed;
@@ -300,6 +399,11 @@ int32 URenameDefaultSubobjectCommandlet::Main(const FString& Params)
             {
                 ++Failed;
             }
+        }
+
+        if (!RenameTemplateActors(Package, Request, Renamed))
+        {
+            ++Failed;
         }
 
         if (Renamed > Before && Request.bApply)
