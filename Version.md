@@ -4,6 +4,14 @@
 
 ## 2.x · UAssetWorkbench
 
+### 2.7.16
+
+- `EditBlueprint` 的 `Layout` `Arrange` 在 K2 图上排得更紧：节点宽度按标题与 pin 标签估，列间距默认 48，同一个消费者的 feeder 共用一列，竖向重叠才往左错开
+- event 的 delegate pin 不再占一行，event 与后面的 exec 线对齐。×、+ 这类紧凑运算节点按无标题栏计算
+- `Arrange` 前框住入口的注释框，排完后重新包住那组节点，下一行从框底下开始
+- `EditBlueprint` 新增 custom event 与 timeline 改名，调用点与事件绑定跟着新名字走，timeline 轨道改名时节点保留连线
+- `RenameDefaultSubobject` 不再在子 Blueprint 上复制出新旧两个子对象，跳过 child actor 模板，不重置已摆放的实例
+
 ### 2.7.15
 
 - `EditBlueprint` 的 `Graph` 新增节点类型 `ComponentBoundEvent`：组件委托的事件节点，等同组件右键 Add Event。只认 `BlueprintAssignable` 委托，同一组件的同一委托已经绑过是错误
