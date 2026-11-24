@@ -17,8 +17,11 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
+#include "EdGraphNode_Comment.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "K2Node.h"
+#include "K2Node_Event.h"
 
 namespace
 {
@@ -39,9 +42,55 @@ namespace
     constexpr int32 kStateBoxPadding = 40;
     constexpr int32 kStateCharWidth = 9;
 
+    // K2 extent, fitted against an event graph its author tidied by hand. A node is as wide as its widest
+    // title line or its input and output labels side by side. A compact-drawn operator has no title bar.
+    constexpr int32 kLabelCharWidth = 7;
+    constexpr int32 kTitlePadding = 48;
+    constexpr int32 kOneSidedPinPadding = 64;
+    constexpr int32 kTwoSidedPinPadding = 96;
+    constexpr int32 kMinPillWidth = 128;
+    constexpr int32 kMaxPillWidth = 176;
+    constexpr int32 kCompactOperatorWidth = 168;
+    constexpr int32 kCompactTitleHeight = 8;
+
+    // A K2 variable pill draws about 40 tall. Its pin still lines up at kCompactNodeHeight / 2, so only the
+    // overlap test between shared-column feeders reads this. Overlaps up to the tolerance still share.
+    constexpr int32 kPillDrawnHeight = 40;
+    constexpr int32 kSharedColumnOverlapTolerance = 8;
+
+    // Exec graph spacing from the same hand-tidied graph. A comment box keeps its title clear of the
+    // nodes it frames.
+    constexpr int32 kExecColumnGap = 48;
+    constexpr int32 kCommentHeaderPadding = 112;
+    constexpr int32 kCommentSidePadding = 64;
+
     bool IsPinVisible(const UEdGraphPin* Pin)
     {
         return Pin && !Pin->bHidden && !Pin->bAdvancedView;
+    }
+
+    // An event draws its delegate pin in the title bar, so the pin takes no row.
+    bool IsTitleBarPin(const UEdGraphPin* Pin)
+    {
+        const UEdGraphNode* Owner = Pin ? Pin->GetOwningNodeUnchecked() : nullptr;
+        return Owner && Owner->IsA<UK2Node_Event>() && Pin->PinName == UK2Node_Event::DelegateOutputName;
+    }
+
+    bool IsPinOnRow(const UEdGraphPin* Pin)
+    {
+        return IsPinVisible(Pin) && !IsTitleBarPin(Pin);
+    }
+
+    // Anim graph nodes are K2 nodes too, but they keep the estimate their pose layout was fitted on.
+    bool IsPlainK2Node(const UEdGraphNode* Node)
+    {
+        return Node && Node->IsA<UK2Node>() && !Node->IsA<UAnimGraphNode_Base>();
+    }
+
+    bool DrawsCompact(const UEdGraphNode* Node)
+    {
+        const UK2Node* K2Node = IsPlainK2Node(Node) ? Cast<UK2Node>(Node) : nullptr;
+        return K2Node && K2Node->ShouldDrawCompact();
     }
 
     // A transition draws as an arrow on the wire between two states, so its NodePos never reaches the
@@ -59,6 +108,11 @@ namespace
     // A bare Get or a knot draws as a small pill: no title row, its one pin on the centre line.
     bool IsCompactNode(const UEdGraphNode* Node)
     {
+        if (Node->IsA<UK2Node_Event>())
+        {
+            return false;
+        }
+
         int32 VisibleCount = 0;
         for (const UEdGraphPin* Pin : Node->Pins)
         {
@@ -73,6 +127,11 @@ namespace
 
     int32 TitleHeightOf(const UEdGraphNode* Node)
     {
+        if (DrawsCompact(Node))
+        {
+            return kCompactTitleHeight;
+        }
+
         const FString FullTitle = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
 
         TArray<FString> TitleLines;
@@ -85,6 +144,50 @@ namespace
     {
         const int32 NameWidth = Node->GetNodeTitle(ENodeTitleType::ListView).ToString().Len() * kStateCharWidth + kStateBoxPadding;
         return FMath::Max(kMinStateBoxWidth, NameWidth);
+    }
+
+    int32 K2WidthOf(const UEdGraphNode* Node)
+    {
+        if (DrawsCompact(Node))
+        {
+            return kCompactOperatorWidth;
+        }
+
+        if (IsCompactNode(Node))
+        {
+            const int32 NameWidth = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString().Len() * kLabelCharWidth + kTitlePadding;
+            return FMath::Clamp(NameWidth, kMinPillWidth, kMaxPillWidth);
+        }
+
+        TArray<FString> TitleLines;
+        Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString().ParseIntoArrayLines(TitleLines);
+
+        int32 LongestTitleLine = 0;
+        for (const FString& Line : TitleLines)
+        {
+            LongestTitleLine = FMath::Max(LongestTitleLine, Line.Len());
+        }
+
+        int32 LongestInputLabel = 0;
+        int32 LongestOutputLabel = 0;
+        const UEdGraphSchema* Schema = Node->GetSchema();
+        for (const UEdGraphPin* Pin : Node->Pins)
+        {
+            if (!IsPinOnRow(Pin))
+            {
+                continue;
+            }
+
+            const int32 LabelLength = Schema ? Schema->GetPinDisplayName(Pin).ToString().Len() : Pin->GetDisplayName().ToString().Len();
+            int32& Longest = Pin->Direction == EGPD_Input ? LongestInputLabel : LongestOutputLabel;
+            Longest = FMath::Max(Longest, LabelLength);
+        }
+
+        const bool bTwoSided = LongestInputLabel > 0 && LongestOutputLabel > 0;
+        const int32 PinPadding = bTwoSided ? kTwoSidedPinPadding : kOneSidedPinPadding;
+        const int32 TitleWidth = LongestTitleLine * kLabelCharWidth + kTitlePadding;
+        const int32 PinWidth = (LongestInputLabel + LongestOutputLabel) * kLabelCharWidth + PinPadding;
+        return FMath::Max(TitleWidth, PinWidth);
     }
 
     int32 WidthOf(const UEdGraphNode* Node)
@@ -103,6 +206,11 @@ namespace
         if (Node->NodeWidth > 0)
         {
             return Node->NodeWidth;
+        }
+
+        if (IsPlainK2Node(Node))
+        {
+            return K2WidthOf(Node);
         }
 
         const int32 TitleWidth = Node->GetNodeTitle(ENodeTitleType::ListView).ToString().Len() * kTitleCharWidth;
@@ -174,7 +282,7 @@ namespace
         int32 OutputRows = 0;
         for (const UEdGraphPin* Pin : Node->Pins)
         {
-            if (!IsPinVisible(Pin))
+            if (!IsPinOnRow(Pin))
             {
                 continue;
             }
@@ -194,10 +302,15 @@ namespace
             return kCompactNodeHeight / 2;
         }
 
+        if (IsTitleBarPin(Target))
+        {
+            return kTitleBarHeight / 2;
+        }
+
         int32 Row = 0;
         for (const UEdGraphPin* Pin : Node->Pins)
         {
-            if (!IsPinVisible(Pin) || Pin->Direction != Target->Direction)
+            if (!IsPinOnRow(Pin) || Pin->Direction != Target->Direction)
             {
                 continue;
             }
@@ -282,12 +395,57 @@ namespace
         TSet<UEdGraphNode*> Measuring;
         int32 ColumnGap = 80;
         int32 RowGap = 48;
+
+        // Placement order, so a comment can frame exactly the nodes its rows placed.
+        TArray<UEdGraphNode*> PlacedOrder;
+
+        // Exec graphs only. Feeders of one node share the column next to it unless they would overlap.
+        bool bShareFeederColumns = false;
+
+        void MarkPlaced(UEdGraphNode* Node)
+        {
+            Placed.Add(Node);
+            PlacedOrder.Add(Node);
+        }
     };
+
+    int32 PlaceFeeders(UEdGraphNode* Node, FArrangeState& State);
+
+    // Shared columns make the span depend on where each feeder lands, so the feeders are placed once
+    // against an origin and the placement is rolled back. The real pass places the same nodes again.
+    int32 MeasurePlacedFeederSpan(UEdGraphNode* Node, FArrangeState& State)
+    {
+        const int32 SavedX = Node->NodePosX;
+        const int32 SavedY = Node->NodePosY;
+        const TSet<UEdGraphNode*> SavedPlaced = State.Placed;
+        const int32 SavedCount = State.PlacedOrder.Num();
+
+        Node->NodePosX = 0;
+        Node->NodePosY = 0;
+        PlaceFeeders(Node, State);
+
+        int32 Left = 0;
+        for (int32 Index = SavedCount; Index < State.PlacedOrder.Num(); ++Index)
+        {
+            Left = FMath::Min(Left, State.PlacedOrder[Index]->NodePosX);
+        }
+
+        State.Placed = SavedPlaced;
+        State.PlacedOrder.SetNum(SavedCount);
+        Node->NodePosX = SavedX;
+        Node->NodePosY = SavedY;
+        return -Left;
+    }
 
     // Horizontal room the feeder subtree needs to the left of Node. The exec spine advances by this
     // much on top of the node's own width, which is what keeps a long data chain from being sat on.
     int32 FeederSpanOf(UEdGraphNode* Node, FArrangeState& State)
     {
+        if (State.bShareFeederColumns)
+        {
+            return MeasurePlacedFeederSpan(Node, State);
+        }
+
         if (State.Measuring.Contains(Node))
         {
             return 0;
@@ -314,13 +472,64 @@ namespace
         return Span;
     }
 
+    struct FSubtreeBox
+    {
+        int32 Left = 0;
+        int32 Top = 0;
+        int32 Bottom = 0;
+    };
+
+    int32 DrawnHeightOf(const UEdGraphNode* Node)
+    {
+        return IsPlainK2Node(Node) && IsCompactNode(Node) ? kPillDrawnHeight : HeightOf(Node);
+    }
+
+    FSubtreeBox BoxOfPlaced(const FArrangeState& State, int32 FirstIndex)
+    {
+        FSubtreeBox Box{ MAX_int32, MAX_int32, MIN_int32 };
+        for (int32 Index = FirstIndex; Index < State.PlacedOrder.Num(); ++Index)
+        {
+            const UEdGraphNode* Placed = State.PlacedOrder[Index];
+            Box.Left = FMath::Min(Box.Left, Placed->NodePosX);
+            Box.Top = FMath::Min(Box.Top, Placed->NodePosY);
+            Box.Bottom = FMath::Max(Box.Bottom, Placed->NodePosY + DrawnHeightOf(Placed));
+        }
+        return Box;
+    }
+
+    // A feeder sits in the column next to its consumer and steps left only past the earlier siblings
+    // whose subtrees it would overlap vertically.
+    int32 SharedColumnRightEdge(const UEdGraphNode* Consumer, const UEdGraphNode* Feeder, const TArray<FSubtreeBox>& Siblings)
+    {
+        const int32 FeederTop = Feeder->NodePosY;
+        const int32 FeederBottom = FeederTop + DrawnHeightOf(Feeder);
+
+        int32 RightEdge = Consumer->NodePosX;
+        bool bMoved = true;
+        while (bMoved)
+        {
+            bMoved = false;
+            for (const FSubtreeBox& Sibling : Siblings)
+            {
+                const bool bOverlapsY = FeederTop < Sibling.Bottom - kSharedColumnOverlapTolerance && Sibling.Top < FeederBottom - kSharedColumnOverlapTolerance;
+                if (bOverlapsY && Sibling.Left < RightEdge)
+                {
+                    RightEdge = Sibling.Left;
+                    bMoved = true;
+                }
+            }
+        }
+        return RightEdge;
+    }
+
     // Every feeder takes the Y that puts its own pin on the line of the pin it feeds, so the wire comes
-    // out flat, and siblings step further left past each other's whole subtree instead of stacking down.
-    // Returns the lowest Y consumed.
+    // out flat. Exec graphs let siblings share a column, other graphs step them left past each other's
+    // whole subtree. Returns the lowest Y consumed.
     int32 PlaceFeeders(UEdGraphNode* Node, FArrangeState& State)
     {
         int32 Bottom = Node->NodePosY + HeightOf(Node);
         int32 LeftEdge = Node->NodePosX;
+        TArray<FSubtreeBox> Siblings;
 
         for (UEdGraphPin* Pin : Node->Pins)
         {
@@ -337,9 +546,19 @@ namespace
                     continue;
                 }
 
-                State.Placed.Add(Feeder);
-                Feeder->NodePosX = LeftEdge - WidthOf(Feeder) - State.ColumnGap;
+                const int32 FirstIndex = State.PlacedOrder.Num();
+                State.MarkPlaced(Feeder);
                 Feeder->NodePosY = Node->NodePosY + PinOffsetY(Node, Pin) - PinOffsetY(Feeder, Linked);
+
+                if (State.bShareFeederColumns)
+                {
+                    Feeder->NodePosX = SharedColumnRightEdge(Node, Feeder, Siblings) - WidthOf(Feeder) - State.ColumnGap;
+                    Bottom = FMath::Max(Bottom, PlaceFeeders(Feeder, State));
+                    Siblings.Add(BoxOfPlaced(State, FirstIndex));
+                    continue;
+                }
+
+                Feeder->NodePosX = LeftEdge - WidthOf(Feeder) - State.ColumnGap;
 
                 // Measured before the subtree is placed, since a placed feeder reports no span.
                 const int32 SubtreeSpan = FeederSpanOf(Feeder, State);
@@ -356,7 +575,7 @@ namespace
     // exec pin half a row lower, so a flat run is not a shared NodePosY.
     int32 PlaceExecChain(UEdGraphNode* Node, int32 PosX, int32 PosY, FArrangeState& State)
     {
-        State.Placed.Add(Node);
+        State.MarkPlaced(Node);
         Node->NodePosX = PosX;
         Node->NodePosY = PosY;
 
@@ -394,7 +613,7 @@ namespace
     // left with siblings stacked. RightEdge is where the node's right side lands, not its origin.
     int32 PlacePoseChain(UEdGraphNode* Node, int32 RightEdge, int32 TopY, FArrangeState& State)
     {
-        State.Placed.Add(Node);
+        State.MarkPlaced(Node);
         Node->NodePosX = RightEdge - WidthOf(Node);
         Node->NodePosY = TopY;
 
@@ -539,7 +758,124 @@ namespace
         int32 RowSpacing = 48;
         int32 PosX = 0;
         int32 PosY = 0;
+
+        // An exec Arrange without an explicit Spacing uses kExecColumnGap.
+        bool bSpacingGiven = false;
     };
+
+    // The smallest comment box that holds the root before the arrange. A root outside every box has none.
+    UEdGraphNode_Comment* FindEnclosingComment(const UEdGraph* Graph, const UEdGraphNode* Root)
+    {
+        UEdGraphNode_Comment* Best = nullptr;
+        int64 BestArea = MAX_int64;
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            UEdGraphNode_Comment* Comment = Cast<UEdGraphNode_Comment>(Node);
+            if (!Comment)
+            {
+                continue;
+            }
+
+            const bool bInsideX = Root->NodePosX >= Comment->NodePosX && Root->NodePosX <= Comment->NodePosX + Comment->NodeWidth;
+            const bool bInsideY = Root->NodePosY >= Comment->NodePosY && Root->NodePosY <= Comment->NodePosY + Comment->NodeHeight;
+            const int64 Area = int64(Comment->NodeWidth) * int64(Comment->NodeHeight);
+            if (bInsideX && bInsideY && Area < BestArea)
+            {
+                Best = Comment;
+                BestArea = Area;
+            }
+        }
+
+        return Best;
+    }
+
+    // Returns the bottom edge of the box.
+    int32 FitCommentAround(UEdGraphNode_Comment* Comment, TArrayView<UEdGraphNode* const> Members)
+    {
+        int32 Left = MAX_int32;
+        int32 Top = MAX_int32;
+        int32 Right = MIN_int32;
+        int32 Bottom = MIN_int32;
+        for (const UEdGraphNode* Member : Members)
+        {
+            Left = FMath::Min(Left, Member->NodePosX);
+            Top = FMath::Min(Top, Member->NodePosY);
+            Right = FMath::Max(Right, Member->NodePosX + WidthOf(Member));
+            Bottom = FMath::Max(Bottom, Member->NodePosY + HeightOf(Member));
+        }
+
+        Comment->NodePosX = Left - kCommentSidePadding;
+        Comment->NodePosY = Top - kCommentHeaderPadding;
+        Comment->NodeWidth = Right - Left + 2 * kCommentSidePadding;
+        Comment->NodeHeight = Bottom - Top + kCommentHeaderPadding + kCommentSidePadding;
+        return Comment->NodePosY + Comment->NodeHeight;
+    }
+
+    // Rows run top to bottom. Consecutive roots inside one comment box share it, and the box is refit around
+    // exactly what their rows placed, its title clear of the first row. The next row starts under the box.
+    void ArrangeExec(const TArray<UEdGraphNode*>& Roots, const FLayoutOpParams& Params, FArrangeState& State)
+    {
+        TMap<UEdGraphNode*, UEdGraphNode_Comment*> GroupOfRoot;
+        if (Params.Graph)
+        {
+            for (UEdGraphNode* Root : Roots)
+            {
+                GroupOfRoot.Add(Root, FindEnclosingComment(Params.Graph, Root));
+            }
+        }
+
+        int32 RowTop = Params.PosY;
+        UEdGraphNode_Comment* OpenGroup = nullptr;
+        int32 GroupStart = 0;
+
+        auto CloseGroup = [&]()
+        {
+            if (OpenGroup && State.PlacedOrder.Num() > GroupStart)
+            {
+                const TArrayView<UEdGraphNode* const> Members = MakeArrayView(State.PlacedOrder).Slice(GroupStart, State.PlacedOrder.Num() - GroupStart);
+                RowTop = FitCommentAround(OpenGroup, Members) + State.RowGap;
+            }
+            OpenGroup = nullptr;
+        };
+
+        for (UEdGraphNode* Root : Roots)
+        {
+            if (State.Placed.Contains(Root))
+            {
+                continue;
+            }
+
+            UEdGraphNode_Comment* Group = GroupOfRoot.FindRef(Root);
+            if (Group != OpenGroup)
+            {
+                CloseGroup();
+                if (Group)
+                {
+                    OpenGroup = Group;
+                    GroupStart = State.PlacedOrder.Num();
+                    RowTop += kCommentHeaderPadding;
+                }
+            }
+
+            RowTop = PlaceExecChain(Root, Params.PosX + FeederSpanOf(Root, State), RowTop, State) + State.RowGap;
+        }
+        CloseGroup();
+
+        // Whatever the roots never reached still has to go somewhere, or it stays stacked on the origin. The
+        // disabled event nodes a fresh Blueprint ships with are the usual case. A comment keeps its place.
+        if (Params.Graph)
+        {
+            for (UEdGraphNode* Stray : Params.Graph->Nodes)
+            {
+                if (!Stray || State.Placed.Contains(Stray) || Stray->IsA<UEdGraphNode_Comment>())
+                {
+                    continue;
+                }
+
+                RowTop = PlaceExecChain(Stray, Params.PosX + FeederSpanOf(Stray, State), RowTop, State) + State.RowGap;
+            }
+        }
+    }
 
     // Every sink starts on the same left edge, so together they read as the output column.
     void PlacePoseRow(UEdGraphNode* Sink, FArrangeState& State, const FLayoutOpParams& Params, int32& InOutRowTop)
@@ -695,31 +1031,12 @@ namespace
                 return true;
             }
 
-            int32 RowTop = Params.PosY;
-            for (UEdGraphNode* Root : Nodes)
+            if (!Params.bSpacingGiven)
             {
-                if (State.Placed.Contains(Root))
-                {
-                    continue;
-                }
-
-                RowTop = PlaceExecChain(Root, Params.PosX + FeederSpanOf(Root, State), RowTop, State) + Params.RowSpacing;
+                State.ColumnGap = kExecColumnGap;
             }
-
-            // Whatever the roots never reached still has to go somewhere, or it stays stacked on the
-            // origin. The disabled event nodes a fresh Blueprint ships with are the usual case.
-            if (Params.Graph)
-            {
-                for (UEdGraphNode* Stray : Params.Graph->Nodes)
-                {
-                    if (!Stray || State.Placed.Contains(Stray))
-                    {
-                        continue;
-                    }
-
-                    RowTop = PlaceExecChain(Stray, Params.PosX + FeederSpanOf(Stray, State), RowTop, State) + Params.RowSpacing;
-                }
-            }
+            State.bShareFeederColumns = true;
+            ArrangeExec(Nodes, Params, State);
 
             return true;
         }
@@ -931,7 +1248,7 @@ namespace
 
                 FLayoutOpParams Params;
                 Params.Graph = OpGraph;
-                Desc->TryGetNumberField(TEXT("Spacing"), Params.Spacing);
+                Params.bSpacingGiven = Desc->TryGetNumberField(TEXT("Spacing"), Params.Spacing);
                 Desc->TryGetNumberField(TEXT("RowSpacing"), Params.RowSpacing);
                 Desc->TryGetNumberField(TEXT("PosX"), Params.PosX);
                 Desc->TryGetNumberField(TEXT("PosY"), Params.PosY);
