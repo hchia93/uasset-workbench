@@ -192,7 +192,7 @@ Audit。`AuditLevelReference` 与 `AuditLevelTopology` 不吃 `AssetList`，位�
 
 `--owner` 必填，用 agent 或 session 的稳定名字。谁起的编辑器谁关，记住自己的编号。
 
-自动化测试进程（命令行带 `-TestExit=` 或 `Automation RunTests`，例如 `Scripts/run-automation-tests.ps1` 起的 UnrealEditor-Cmd）不建 task queue 子系统，不写 `.alive`。测试刚结束就调 wrapper 会直接走独立 commandlet。
+自动化测试进程（命令行带 `-TestExit=` 或 `Automation RunTests` 的 UnrealEditor-Cmd）不建 task queue 子系统，不写 `.alive`。测试刚结束就调 wrapper 会直接走独立 commandlet。
 
 `exec_in_editor.py` 只连本项目的编辑器，按 remote execution pong 的 `project_root` 过滤。本项目开着不止一个编辑器时直接失败并列出候选，用 `--editor <N>` 点名，按 pid 校验。
 
